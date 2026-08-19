@@ -22,7 +22,7 @@ public abstract class MixinShaderEntityRenderer {
     //$$ @Inject(method = "renderWorldPass", at = @At("HEAD"))
     //#endif
     //#endif
-    private void replayModCompat_updateShaderFrameTimeCounter(CallbackInfo ignore) {
+    private void replayModCompat_updateShaderFrameTimeCounter(net.minecraft.client.render.RenderTickCounter tickCounter, CallbackInfo ignore) {
         if (ReplayModReplay.instance.getReplayHandler() == null) return;
         if (ShaderReflection.shaders_frameTimeCounter == null) return;
 

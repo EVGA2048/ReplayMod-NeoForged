@@ -164,12 +164,11 @@ public class MinecraftGuiRenderer implements GuiRenderer {
     private void drawTexturedRect(int x1, int x2, int y1, int y2, float u1, float u2, float v1, float v2) {
         RenderSystem.setShader(GameRenderer::getPositionTexProgram);
         Matrix4f matrix = matrixStack.peek().getPositionMatrix();
-        BufferBuilder bufferBuilder = Tessellator.getInstance().getBuffer();
-        bufferBuilder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_TEXTURE);
-        bufferBuilder.vertex(matrix, x1, y1, 0).texture(u1, v1).next();
-        bufferBuilder.vertex(matrix, x1, y2, 0).texture(u1, v2).next();
-        bufferBuilder.vertex(matrix, x2, y2, 0).texture(u2, v2).next();
-        bufferBuilder.vertex(matrix, x2, y1, 0).texture(u2, v1).next();
+        BufferBuilder bufferBuilder = Tessellator.getInstance().begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_TEXTURE);
+        bufferBuilder.vertex(matrix, x1, y1, 0).texture(u1, v1);
+        bufferBuilder.vertex(matrix, x1, y2, 0).texture(u1, v2);
+        bufferBuilder.vertex(matrix, x2, y2, 0).texture(u2, v2);
+        bufferBuilder.vertex(matrix, x2, y1, 0).texture(u2, v1);
         BufferRenderer.drawWithGlobalProgram(bufferBuilder.end());
     }
     //#endif

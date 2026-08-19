@@ -1,54 +1,34 @@
 package com.replaymod.core.utils;
 
+import net.minecraft.network.RegistryByteBuf;
+import net.minecraft.network.codec.PacketCodec;
+import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.network.packet.s2c.common.CustomPayloadS2CPacket;
-import net.minecraft.network.PacketByteBuf;
-//#if MC>=10904
 import net.minecraft.util.Identifier;
-//#endif
-
-//#if MC<=10710 || MC>=12002
-import io.netty.buffer.Unpooled;
-//#endif
 
 /**
  * Restrictions set by the server,
  * @see <a href="https://gist.github.com/Johni0702/2547c463e51f65f312cb">Replay Restrictions Gist</a>
  */
 public class Restrictions {
-    //#if MC>=11400
-    public static final Identifier PLUGIN_CHANNEL = new Identifier("replaymod", "restrict");
-    //#else
-    //$$ public static final String PLUGIN_CHANNEL = "Replay|Restrict";
-    //#endif
+    public static final Identifier PLUGIN_CHANNEL = Identifier.of("replaymod", "restrict");
+
+    public record Payload() implements CustomPayload {
+        public static final Id<Payload> ID = new Id<>(PLUGIN_CHANNEL);
+        public static final PacketCodec<RegistryByteBuf, Payload> CODEC = PacketCodec.unit(new Payload());
+
+        @Override
+        public Id<? extends CustomPayload> getId() {
+            return ID;
+        }
+    }
+
     private boolean noXray;
     private boolean noNoclip;
     private boolean onlyFirstPerson;
     private boolean onlyRecordingPlayer;
 
     public String handle(CustomPayloadS2CPacket packet) {
-        //#if MC>=12002
-        PacketByteBuf buffer = new PacketByteBuf(Unpooled.buffer());
-        packet.write(buffer);
-        //#elseif MC>=10800
-        //$$ PacketByteBuf buffer = packet.getData();
-        //#else
-        //$$ PacketBuffer buffer = new PacketBuffer(Unpooled.wrappedBuffer(packet.func_149168_d()));
-        //#endif
-        while (buffer.isReadable()) {
-            String name = buffer.readString(64);
-            boolean active = buffer.readBoolean();
-//            if ("no_xray".equals(name)) {
-//                noXray = active;
-//            } else if ("no_noclip".equals(name)) {
-//                noNoclip = active;
-//            } else if ("only_first_person".equals(name)) {
-//                onlyFirstPerson = active;
-//            } else if ("only_recording_player".equals(name)) {
-//                onlyRecordingPlayer = active;
-//            } else {
-                return name;
-//            }
-        }
         return null;
     }
 

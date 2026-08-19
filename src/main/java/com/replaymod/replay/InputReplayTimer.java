@@ -44,25 +44,8 @@ public class InputReplayTimer extends WrappedTimer {
     }
 
     @Override
-    public
-    //#if MC>=11600
-    int
-    //#else
-    //$$ void
-    //#endif
-    beginRenderTick(
-            //#if MC>=11400
-            long sysClock
-            //#endif
-    ) {
-        //#if MC>=11600
-        int ticksThisFrame =
-        //#endif
-        super.beginRenderTick(
-                //#if MC>=11400
-                sysClock
-                //#endif
-        );
+    public int beginRenderTick(long sysClock, boolean tick) {
+        int ticksThisFrame = super.beginRenderTick(sysClock, tick);
 
         ReplayMod.instance.runTasks();
 

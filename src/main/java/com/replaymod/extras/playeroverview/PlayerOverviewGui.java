@@ -30,7 +30,7 @@ import net.minecraft.entity.effect.StatusEffects;
 //#endif
 
 //#if MC>=10800
-import net.minecraft.client.render.entity.PlayerModelPart;
+import net.minecraft.entity.player.PlayerModelPart;
 //#endif
 
 import java.util.Collections;

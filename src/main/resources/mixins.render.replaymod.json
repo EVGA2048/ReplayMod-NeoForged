@@ -4,13 +4,7 @@
   "mixins": [],
   "server": [],
   "client": [
-    //#if MC>=11800
-    //#if MC>=12002
     "ChunkRenderingDataPreparerAccessor",
-    //#else
-    //$$ "ChunkInfoAccessor",
-    //#endif
-    //#endif
     "Mixin_ChromaKeyColorSky",
     "Mixin_ChromaKeyDisableFog",
     "Mixin_ChromaKeyForceSky",
@@ -27,34 +21,12 @@
     "Mixin_Stereoscopic_Camera",
     "Mixin_Stereoscopic_HandRenderPass",
     "Mixin_SuppressFramebufferResizeDuringRender",
-    //#if MC>=11600
-    "Mixin_AddIrisOdsShaderUniforms",
-    "Mixin_LoadIrisOdsShaderPack",
-    //#endif
-    //#if MC>=10800
-    //#if MC>=11500
     "Mixin_BlockOnChunkRebuilds",
-    //#else
-    //$$ "ChunkRenderDispatcherAccessor",
-    //$$ "MixinChunkRenderWorker",
-    //#endif
-    //#endif
     "GameRendererAccessor",
     "MainWindowAccessor",
     "WorldRendererAccessor",
-    //#if MC>=10904
     "MixinParticleManager",
-    //#else
-    //$$ "MixinEffectRenderer",
-    //#endif
     "MixinEntityRenderer",
-    //#if MC>=10800 && MC<11700
-    //$$ "MixinGlStateManager",
-    //#endif
-    //#if MC>=10800
-    //#else
-    //$$ "MixinOpenGlHelper",
-    //#endif
     "MixinRenderManager"
   ],
   "compatibilityLevel": "JAVA_8",

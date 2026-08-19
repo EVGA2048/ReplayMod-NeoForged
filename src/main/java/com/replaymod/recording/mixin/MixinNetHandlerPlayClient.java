@@ -72,7 +72,7 @@ public abstract class MixinNetHandlerPlayClient {
             // to parse it instead.
             ByteBuf byteBuf = Unpooled.buffer();
             try {
-                packet.write(new PacketByteBuf(byteBuf));
+                PlayerListS2CPacket.CODEC.encode(new net.minecraft.network.RegistryByteBuf(byteBuf, mcStatic.world.getRegistryManager()), packet);
 
                 byteBuf.readerIndex(0);
                 byte[] array = new byte[byteBuf.readableBytes()];

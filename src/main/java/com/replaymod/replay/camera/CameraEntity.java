@@ -83,7 +83,7 @@ import net.minecraft.util.Hand;
 
 //#if MC>=10800
 import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.render.entity.PlayerModelPart;
+import net.minecraft.entity.player.PlayerModelPart;
 //#else
 //$$ import net.minecraft.client.entity.EntityClientPlayerMP;
 //$$ import net.minecraft.util.Session;

@@ -219,7 +219,7 @@ public abstract class AbstractGuiTextArea<T extends AbstractGuiTextArea<T>>
     @Override
     public void writeChar(char c) {
         //#if MC>=11400
-        if (!SharedConstants.isValidChar(c)) {
+        if (!net.minecraft.util.StringHelper.isValidChar(c)) {
         //#else
         //$$ if (!ChatAllowedCharacters.isAllowedCharacter(c)) {
         //#endif

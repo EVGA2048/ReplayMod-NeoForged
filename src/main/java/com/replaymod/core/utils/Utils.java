@@ -246,7 +246,7 @@ public class Utils {
 
     public static GuiInfoPopup error(Logger logger, GuiContainer container, CrashReport crashReport, Runnable onClose) {
         // Convert crash report to string
-        String crashReportStr = crashReport.asString();
+        String crashReportStr = crashReport.asString(net.minecraft.util.crash.ReportType.MINECRAFT_CRASH_REPORT);
 
         // Log via logger
         logger.error(crashReportStr);
@@ -257,7 +257,7 @@ public class Utils {
                 File folder = new File(getMinecraft().runDirectory, "crash-reports");
                 File file = new File(folder, "crash-" + (new SimpleDateFormat("yyyy-MM-dd_HH.mm.ss")).format(new Date()) + "-client.txt");
                 logger.debug("Saving crash report to file: {}", file);
-                crashReport.writeToFile(file);
+                crashReport.writeToFile(file.toPath(), net.minecraft.util.crash.ReportType.MINECRAFT_CRASH_REPORT);
             } catch (Throwable t) {
                 logger.error("Saving crash report file:", t);
             }

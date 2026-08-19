@@ -40,8 +40,8 @@ import net.minecraft.util.Identifier;
 // TODO: Currently assumes a height of 20
 public abstract class AbstractGuiSlider<T extends AbstractGuiSlider<T>> extends AbstractGuiElement<T> implements Clickable, Draggable, IGuiSlider<T> {
     //#if MC>=12002
-    protected static final Identifier TEXTURE = new Identifier("widget/slider");
-    protected static final Identifier HANDLE_TEXTURE = new Identifier("widget/slider_handle");
+    protected static final Identifier TEXTURE = Identifier.of("widget/slider");
+    protected static final Identifier HANDLE_TEXTURE = Identifier.of("widget/slider_handle");
     //#endif
 
     private Runnable onValueChanged;

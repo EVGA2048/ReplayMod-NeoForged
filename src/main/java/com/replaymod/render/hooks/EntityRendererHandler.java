@@ -94,7 +94,7 @@ public class EntityRendererHandler extends EventRegistrations implements WorldRe
                 }
 
                 //#if MC>=11400
-                mc.gameRenderer.render(partialTicks, finishTimeNano, true);
+                mc.gameRenderer.render(mc.getRenderTickCounter(), true);
                 //#else
                 //$$ mc.setIngameNotInFocus(); // this should already be the case but it somehow still sometimes is not
                 //#if MC>=10809

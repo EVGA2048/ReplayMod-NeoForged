@@ -80,14 +80,14 @@ public class QuickReplaySender extends ChannelHandlerAdapter implements ReplaySe
                 wrappedBuf.writerIndex(size);
                 PacketByteBuf packetByteBuf = new PacketByteBuf(wrappedBuf);
 
-                NetworkState state = asMc(packet.getRegistry().getState());
+                NetworkState<?> state = asMc(packet.getRegistry().getState());
                 //#if MC>=10809
                 Packet<?> mcPacket;
                 //#else
                 //$$ Packet mcPacket;
                 //#endif
                 //#if MC>=12002
-                mcPacket = state.getHandler(NetworkSide.CLIENTBOUND).createPacket(packet.getId(), packetByteBuf);
+                mcPacket = state.codec().decode(packetByteBuf);
                 //#elseif MC>=11700
                 //$$ mcPacket = state.getPacketHandler(NetworkSide.CLIENTBOUND, packet.getId(), packetByteBuf);
                 //#elseif MC>=11500

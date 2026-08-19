@@ -24,7 +24,6 @@ import com.replaymod.render.processor.ODSToBitmapProcessor;
 import com.replaymod.render.processor.OpenGlToBitmapProcessor;
 import com.replaymod.render.processor.StereoscopicToBitmapProcessor;
 import com.replaymod.render.utils.PixelBufferObject;
-import net.neoforged.fml.loading.LoadingModList;
 
 import java.util.Map;
 
@@ -106,14 +105,7 @@ public class Pipelines {
         ODSToBitmapProcessor processor = new ODSToBitmapProcessor(settings.getVideoWidth(),
                 settings.getVideoHeight(), settings.getSphericalFovX());
 
-        //#if MC>=11600
-        boolean iris = LoadingModList.get().getModFileById("oculus") != null;
-        FrameCapturer<ODSOpenGlFrame> capturer = iris
-                ? new com.replaymod.render.capturer.IrisODSFrameCapturer(worldRenderer, renderInfo, processor.getFrameSize())
-                : new ODSFrameCapturer(worldRenderer, renderInfo, processor.getFrameSize());
-        //#else
-        //$$ FrameCapturer<ODSOpenGlFrame> capturer = new ODSFrameCapturer(worldRenderer, renderInfo, processor.getFrameSize());
-        //#endif
+        FrameCapturer<ODSOpenGlFrame> capturer = new ODSFrameCapturer(worldRenderer, renderInfo, processor.getFrameSize());
         return new Pipeline<>(worldRenderer, capturer, processor, consumer);
     }
 

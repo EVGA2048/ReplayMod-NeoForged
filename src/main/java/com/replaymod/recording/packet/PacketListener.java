@@ -101,12 +101,9 @@ public class PacketListener extends ChannelInboundHandlerAdapter {
             //$$ new ResourcePackSendS2CPacket()
             //#endif
             ;
-    private static final int PACKET_ID_RESOURCE_PACK_SEND = getPacketId(NetworkState.PLAY, RESOURCE_PACK_SEND_PACKET);
-    //#if MC>=12002
-    private static final int PACKET_ID_CONFIG_RESOURCE_PACK_SEND = getPacketId(NetworkState.CONFIGURATION, RESOURCE_PACK_SEND_PACKET);
-    //#endif
-    //#if MC>=11700
-    private static final int PACKET_ID_LOGIN_COMPRESSION = getPacketId(NetworkState.LOGIN, new LoginCompressionS2CPacket(0));
+    private static final int PACKET_ID_RESOURCE_PACK_SEND = getPacketId(MCVer.asMc(com.replaymod.replaystudio.lib.viaversion.api.protocol.packet.State.PLAY), RESOURCE_PACK_SEND_PACKET);
+    private static final int PACKET_ID_CONFIG_RESOURCE_PACK_SEND = getPacketId(MCVer.asMc(com.replaymod.replaystudio.lib.viaversion.api.protocol.packet.State.CONFIGURATION), RESOURCE_PACK_SEND_PACKET);
+    private static final int PACKET_ID_LOGIN_COMPRESSION = getPacketId(MCVer.asMc(com.replaymod.replaystudio.lib.viaversion.api.protocol.packet.State.LOGIN), new LoginCompressionS2CPacket(0));
     //#else
     //$$ private static final int PACKET_ID_LOGIN_COMPRESSION = getPacketId(NetworkState.LOGIN, new LoginCompressionS2CPacket());
     //#endif
@@ -351,7 +348,7 @@ public class PacketListener extends ChannelInboundHandlerAdapter {
         }
         this.context = ctx;
 
-        NetworkState connectionState = getConnectionState();
+        NetworkState<?> connectionState = getConnectionState();
 
         Packet packet = null;
         if (msg instanceof ByteBuf) {
@@ -365,7 +362,7 @@ public class PacketListener extends ChannelInboundHandlerAdapter {
             // ourselves to be able to store them
             //#if MC>=11904
             //#if MC>=12002
-            PacketBundleHandler bundleHandler = ctx.channel().attr(ClientConnection.CLIENTBOUND_PROTOCOL_KEY).get().getBundler();
+            PacketBundleHandler bundleHandler = getConnectionState().bundleHandler();
             //#else
             //$$ PacketBundleHandler bundleHandler = ctx.channel().attr(PacketBundleHandler.KEY).get().getBundler(NetworkSide.CLIENTBOUND);
             //#endif
@@ -389,10 +386,8 @@ public class PacketListener extends ChannelInboundHandlerAdapter {
         }
 
         if (packet != null) {
-            if (connectionState == NetworkState.PLAY && packet.getId() == PACKET_ID_RESOURCE_PACK_SEND
-                    //#if MC>=12002
-                    || connectionState == NetworkState.CONFIGURATION && packet.getId() == PACKET_ID_CONFIG_RESOURCE_PACK_SEND
-                    //#endif
+            if (connectionState.id() == net.minecraft.network.NetworkPhase.PLAY && packet.getId() == PACKET_ID_RESOURCE_PACK_SEND
+                    || connectionState.id() == net.minecraft.network.NetworkPhase.CONFIGURATION && packet.getId() == PACKET_ID_CONFIG_RESOURCE_PACK_SEND
             ) {
                 ClientConnection connection = ctx.pipeline().get(ClientConnection.class);
                 save(resourcePackRecorder.handleResourcePack(connection, (ResourcePackSendS2CPacket) decodeMcPacket(packet)));
@@ -408,67 +403,44 @@ public class PacketListener extends ChannelInboundHandlerAdapter {
         super.channelRead(ctx, msg);
     }
 
-    private NetworkState getConnectionState() {
+    private NetworkState<?> getConnectionState() {
         ChannelHandlerContext ctx = context;
         if (ctx == null) {
-            return NetworkState.LOGIN;
+            return net.minecraft.network.state.LoginStates.S2C;
         }
-        //#if MC>=12002
-        AttributeKey<NetworkState.PacketHandler<?>> key = ClientConnection.CLIENTBOUND_PROTOCOL_KEY;
-        return ctx.channel().attr(key).get().getState();
-        //#else
-        //$$ AttributeKey<NetworkState> key = ClientConnection.PROTOCOL_ATTRIBUTE_KEY;
-        //$$ return ctx.channel().attr(key).get();
-        //#endif
+        ClientConnection connection = ctx.pipeline().get(ClientConnection.class);
+        NetworkState<?> inbound = connection != null ? connection.getInboundProtocol() : null;
+        return inbound != null ? inbound : net.minecraft.network.state.LoginStates.S2C;
     }
 
-    private static Packet encodeMcPacket(NetworkState connectionState, net.minecraft.network.packet.Packet packet) throws Exception {
-        //#if MC>=10800
-        Integer packetId = connectionState.getHandler(NetworkSide.CLIENTBOUND).getId(packet);
-        //#else
-        //$$ Integer packetId = (Integer) connectionState.func_150755_b().inverse().get(packet.getClass());
-        //#endif
-        if (packetId == null) {
-            throw new IOException("Unknown packet type:" + packet.getClass());
-        }
+    private static Packet encodeMcPacket(NetworkState<?> connectionState, net.minecraft.network.packet.Packet packet) throws Exception {
         ByteBuf byteBuf = Unpooled.buffer();
         try {
-            packet.write(new PacketByteBuf(byteBuf));
+            connectionState.codec().encode(byteBuf, packet);
+            PacketByteBuf pb = new PacketByteBuf(byteBuf);
+            int packetId = pb.readVarInt();
+            byte[] data = new byte[pb.readableBytes()];
+            pb.readBytes(data);
             return new Packet(
                     MCVer.getPacketTypeRegistry(connectionState),
                     packetId,
-                    com.github.steveice10.netty.buffer.Unpooled.wrappedBuffer(
-                            byteBuf.array(),
-                            byteBuf.arrayOffset(),
-                            byteBuf.readableBytes()
-                    )
+                    com.github.steveice10.netty.buffer.Unpooled.wrappedBuffer(data)
             );
         } finally {
             byteBuf.release();
         }
     }
 
-    private static net.minecraft.network.packet.Packet decodeMcPacket(Packet packet) throws IOException, IllegalAccessException, InstantiationException {
-        NetworkState connectionState = asMc(packet.getRegistry().getState());
-        int packetId = packet.getId();
-        PacketByteBuf packetBuf = new PacketByteBuf(Unpooled.wrappedBuffer(packet.getBuf().nioBuffer()));
-
-        //#if MC>=12002
-        return connectionState.getHandler(NetworkSide.CLIENTBOUND).createPacket(packetId, packetBuf);
-        //#elseif MC>=11700
-        //$$ return connectionState.getPacketHandler(NetworkSide.CLIENTBOUND, packetId, packetBuf);
-        //#else
-        //#if MC>=10800
-        //$$ net.minecraft.network.Packet p = connectionState.getPacketHandler(NetworkSide.CLIENTBOUND, packetId);
-        //#else
-        //$$ net.minecraft.network.Packet p = net.minecraft.network.Packet.generatePacket(connectionState.func_150755_b(), packetId);
-        //#endif
-        //$$ p.read(packetBuf);
-        //$$ return p;
-        //#endif
+    private static net.minecraft.network.packet.Packet decodeMcPacket(Packet packet) throws IOException {
+        NetworkState<?> connectionState = asMc(packet.getRegistry().getState());
+        ByteBuf combined = Unpooled.buffer();
+        PacketByteBuf header = new PacketByteBuf(combined);
+        header.writeVarInt(packet.getId());
+        combined.writeBytes(packet.getBuf().nioBuffer());
+        return connectionState.codec().decode(combined);
     }
 
-    private static Packet decodePacket(NetworkState connectionState, ByteBuf buf) {
+    private static Packet decodePacket(NetworkState<?> connectionState, ByteBuf buf) {
         PacketByteBuf packetBuf = new PacketByteBuf(buf.slice());
         int packetId = packetBuf.readVarInt();
         byte[] bytes = new byte[packetBuf.readableBytes()];
@@ -480,9 +452,11 @@ public class PacketListener extends ChannelInboundHandlerAdapter {
         );
     }
 
-    private static int getPacketId(NetworkState networkState, net.minecraft.network.packet.Packet packet) {
+    private static int getPacketId(NetworkState<?> networkState, net.minecraft.network.packet.Packet packet) {
         try {
-            return requireNonNull(networkState.getHandler(NetworkSide.CLIENTBOUND).getId(packet));
+            ByteBuf buf = Unpooled.buffer();
+            networkState.codec().encode(buf, packet);
+            return new PacketByteBuf(buf).readVarInt();
         } catch (Exception e) {
             throw new RuntimeException("Failed to determine packet id for " + packet.getClass(), e);
         }
@@ -537,7 +511,7 @@ public class PacketListener extends ChannelInboundHandlerAdapter {
 
             if (msg instanceof CustomPayloadS2CPacket) {
                 CustomPayloadS2CPacket packet = (CustomPayloadS2CPacket) msg;
-                if (Restrictions.PLUGIN_CHANNEL.equals(packet.payload().id())) {
+                if (Restrictions.PLUGIN_CHANNEL.equals(packet.payload().getId().id())) {
                     save(new DisconnectS2CPacket(net.minecraft.text.Text.literal("Please update to view this replay.")));
                 }
             }

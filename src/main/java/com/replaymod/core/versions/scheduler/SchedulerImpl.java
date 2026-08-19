@@ -113,7 +113,7 @@ public class SchedulerImpl implements  Scheduler {
                     runnable.run();
                 } catch (CrashException e) {
                     e.printStackTrace();
-                    System.err.println(e.getReport().asString());
+                    System.err.println(e.getReport().asString(net.minecraft.util.crash.ReportType.MINECRAFT_CRASH_REPORT));
                     mc.setCrashReportSupplier(e.getReport());
                 } finally {
                     inRunLater = false;

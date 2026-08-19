@@ -5,7 +5,7 @@ import de.johni0702.minecraft.gui.utils.lwjgl.vector.Matrix4f;
 import de.johni0702.minecraft.gui.utils.lwjgl.vector.Quaternion;
 import de.johni0702.minecraft.gui.utils.lwjgl.vector.Vector3f;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.util.GlAllocationUtils;
+import org.lwjgl.BufferUtils;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.block.entity.BlockEntity;
 import org.blender.dna.Link;
@@ -39,7 +39,7 @@ public class Util {
         }
     }
 
-    private static FloatBuffer floatBuffer = GlAllocationUtils.allocateByteBuffer(16 * 4).asFloatBuffer();
+    private static FloatBuffer floatBuffer = BufferUtils.createFloatBuffer(16);
     public static Matrix4f getGlMatrix(int matrix) {
         floatBuffer.clear();
         //#if MC>=11400
@@ -184,7 +184,7 @@ public class Util {
 
     public static String getTileEntityId(BlockEntity tileEntity) {
         //#if MC>=11800
-        NbtCompound nbt = tileEntity.createNbt();
+        NbtCompound nbt = tileEntity.createNbt(net.minecraft.registry.DynamicRegistryManager.EMPTY);
         //#else
         //$$ NbtCompound nbt = new NbtCompound();
         //#if MC>=11400

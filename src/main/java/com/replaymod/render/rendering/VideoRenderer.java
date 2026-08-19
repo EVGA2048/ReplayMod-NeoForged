@@ -92,7 +92,7 @@ import static org.lwjgl.opengl.GL11.GL_COLOR_BUFFER_BIT;
 import static org.lwjgl.opengl.GL11.GL_DEPTH_BUFFER_BIT;
 
 public class VideoRenderer implements RenderInfo {
-    private static final Identifier SOUND_RENDER_SUCCESS = new Identifier("replaymod", "render_success");
+    private static final Identifier SOUND_RENDER_SUCCESS = Identifier.of("replaymod", "render_success");
     private final MinecraftClient mc = MCVer.getMinecraft();
     private final RenderSettings settings;
     private final ReplayHandler replayHandler;
@@ -192,7 +192,7 @@ public class VideoRenderer implements RenderInfo {
         // Because this might take some time to prepare we'll render the GUI at least once to not confuse the user
         drawGui();
 
-        RenderTickCounter timer = ((MinecraftAccessor) mc).getTimer();
+        RenderTickCounter.Dynamic timer = ((MinecraftAccessor) mc).getTimer();
 
         // Play up to one second before starting to render
         // This is necessary in order to ensure that all entities have at least two position packets
@@ -207,7 +207,7 @@ public class VideoRenderer implements RenderInfo {
             if (videoStart > 1000) {
                 int replayTime = videoStart - 1000;
                 //#if MC>=11200
-                timer.tickDelta = 0;
+                ((TimerAccessor) timer).setTickDeltaValue(0);
                 ((TimerAccessor) timer).setTickLength(WrappedTimer.DEFAULT_MS_PER_TICK);
                 //#else
                 //$$ timer.elapsedPartialTicks = timer.renderPartialTicks = 0;
@@ -269,15 +269,11 @@ public class VideoRenderer implements RenderInfo {
         }
 
         // Updating the timer will cause the timeline player to update the game state
-        RenderTickCounter timer = ((MinecraftAccessor) mc).getTimer();
+        RenderTickCounter.Dynamic timer = ((MinecraftAccessor) mc).getTimer();
         //#if MC>=11600
         int elapsedTicks =
         //#endif
-        timer.beginRenderTick(
-                //#if MC>=11400
-                MCVer.milliTime()
-                //#endif
-        );
+        timer.beginRenderTick(MCVer.milliTime(), true);
         //#if MC<11600
         //$$ int elapsedTicks = timer.ticksThisFrame;
         //#endif
@@ -298,11 +294,11 @@ public class VideoRenderer implements RenderInfo {
         guiWindow.unbind();
 
         if (cameraPathExporter != null) {
-            cameraPathExporter.recordFrame(timer.tickDelta);
+            cameraPathExporter.recordFrame(((TimerAccessor) timer).getTickDeltaValue());
         }
 
         framesDone++;
-        return timer.tickDelta;
+        return ((TimerAccessor) timer).getTickDeltaValue();
     }
 
     @Override
@@ -506,8 +502,8 @@ public class VideoRenderer implements RenderInfo {
                     , VertexSorter.BY_Z
                     //#endif
             );
-            MatrixStack matrixStack = RenderSystem.getModelViewStack();
-            matrixStack.loadIdentity();
+            org.joml.Matrix4fStack matrixStack = RenderSystem.getModelViewStack();
+            matrixStack.identity();
             matrixStack.translate(0, 0, -2000);
             RenderSystem.applyModelViewMatrix();
             DiffuseLighting.enableGuiDepthLighting();

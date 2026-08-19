@@ -2,51 +2,30 @@ package com.replaymod.render.mixin;
 
 import com.replaymod.render.capturer.CubicOpenGlFrameCapturer;
 import com.replaymod.render.hooks.EntityRendererHandler;
+import org.joml.Matrix4f;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-
-//#if MC>=11500
-import net.minecraft.client.util.math.MatrixStack;
-import org.joml.Vector3f;
-//#else
-//$$ import org.lwjgl.opengl.GL11;
-//#endif
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 
 import static com.replaymod.core.versions.MCVer.getMinecraft;
 
-//#if MC>=11500
 @Mixin(value = net.minecraft.client.render.GameRenderer.class)
-//#else
-//#if MC>=11400
-//$$ @Mixin(value = net.minecraft.client.render.Camera.class)
-//#else
-//$$ @Mixin(value = net.minecraft.client.renderer.EntityRenderer.class)
-//#endif
-//#endif
 public abstract class Mixin_Omnidirectional_Rotation {
     private EntityRendererHandler getHandler() {
         return ((EntityRendererHandler.IEntityRenderer) getMinecraft().gameRenderer).replayModRender_getHandler();
     }
 
-    //#if MC>=11500
-    @Inject(method = "renderWorld", at = @At("HEAD"))
-    //#else
-    //#if MC>=11400
-    //$$ @Inject(method = "update", at = @At("HEAD"))
-    //#else
-    //$$ @Inject(method = "orientCamera", at = @At("HEAD"))
-    //#endif
-    //#endif
-    private void replayModRender_setupCubicFrameRotation(
-            //#if MC>=11500
-            float partialTicks,
-            long frameStartNano,
-            MatrixStack matrixStack,
-            //#endif
-            CallbackInfo ci
-    ) {
+    @ModifyArg(
+            method = "renderWorld",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/render/WorldRenderer;setupFrustum(Lnet/minecraft/util/math/Vec3d;Lorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V"
+            ),
+            index = 1
+    )
+    private Matrix4f replayModRender_setupCubicFrameRotation(Matrix4f view) {
         if (getHandler() != null && getHandler().data instanceof CubicOpenGlFrameCapturer.Data) {
             CubicOpenGlFrameCapturer.Data data = (CubicOpenGlFrameCapturer.Data) getHandler().data;
             float angle = 0;
@@ -78,23 +57,9 @@ public abstract class Mixin_Omnidirectional_Rotation {
                     x = 1;
                     break;
             }
-            //#if MC>=11500
-            matrixStack.multiply(new org.joml.Quaternionf().fromAxisAngleDeg(new Vector3f(x, y, 0), angle));
-            //#else
-            //$$ GL11.glRotatef(angle, x, y, 0);
-            //#endif
-
+            view.rotate(new Quaternionf().fromAxisAngleDeg(new Vector3f(x, y, 0), angle));
             getMinecraft().worldRenderer.scheduleTerrainUpdate();
         }
-        //#if MC<11500
-        //$$ if (getHandler() != null && getHandler().omnidirectional) {
-        //$$     // Minecraft goes back a little so we have to revert that
-            //#if MC>=11400
-            //$$ GL11.glTranslatef(0.0F, 0.0F, -0.05F);
-            //#else
-            //$$ GL11.glTranslatef(0.0F, 0.0F, 0.1F);
-            //#endif
-        //$$ }
-        //#endif
+        return view;
     }
 }

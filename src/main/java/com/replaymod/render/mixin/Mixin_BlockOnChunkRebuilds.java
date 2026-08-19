@@ -3,7 +3,6 @@ package com.replaymod.render.mixin;
 //#if MC>=11500
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.replaymod.render.hooks.ForceChunkLoadingHook;
-import net.minecraft.client.render.chunk.BlockBufferBuilderStorage;
 import net.minecraft.client.render.chunk.ChunkBuilder;
 import net.minecraft.util.thread.TaskExecutor;
 import org.spongepowered.asm.mixin.Final;

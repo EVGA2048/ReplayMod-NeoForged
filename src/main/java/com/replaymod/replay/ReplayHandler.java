@@ -326,7 +326,7 @@ public class ReplayHandler {
         channel.pipeline().addLast("ReplayModReplay_replaySender", fullReplaySender);
         //#if MC>=12002
         channel.pipeline().addLast("ReplayModReplay_transition", new DummyNetworkStateTransitionHandler());
-        channel.pipeline().addLast("bundler", new PacketBundler(ClientConnection.CLIENTBOUND_PROTOCOL_KEY));
+        channel.pipeline().addLast("bundler", new PacketBundler(net.minecraft.network.state.LoginStates.S2C.bundleHandler()));
         //#elseif MC>=11904
         //$$ channel.pipeline().addLast("bundler", new PacketBundler(NetworkSide.CLIENTBOUND));
         //#endif
@@ -336,25 +336,18 @@ public class ReplayHandler {
         // MC usually transitions from handshake to login via the packets it sends.
         // We don't send any packets (there is no server to receive them), so we need to switch manually.
         //#if MC>=12002
-        channel.attr(ClientConnection.CLIENTBOUND_PROTOCOL_KEY).set(NetworkState.LOGIN.getHandler(NetworkSide.CLIENTBOUND));
-        channel.attr(ClientConnection.SERVERBOUND_PROTOCOL_KEY).set(NetworkState.LOGIN.getHandler(NetworkSide.SERVERBOUND));
-        //#else
-        //$$ networkManager.setState(NetworkState.LOGIN);
-        //#endif
-
-        networkManager.setPacketListener(new ClientLoginNetworkHandler(
+        ClientLoginNetworkHandler loginHandler = new ClientLoginNetworkHandler(
                 networkManager,
                 mc,
-                null
-                //#if MC>=11903
-                , null
-                , false
-                , null
-                //#endif
-                //#if MC>=11400
-                , it -> {}
-                //#endif
-        ));
+                null,
+                null,
+                false,
+                java.time.Duration.ZERO,
+                it -> {},
+                new net.minecraft.client.network.CookieStorage(java.util.Map.of())
+        );
+        networkManager.transitionInbound(net.minecraft.network.state.LoginStates.S2C, loginHandler);
+        networkManager.transitionOutbound(net.minecraft.network.state.LoginStates.C2S);
 
         //#if MC>=11400
         ((MinecraftAccessor) mc).setConnection(networkManager);
@@ -679,8 +672,8 @@ public class ReplayHandler {
                         , VertexSorter.BY_Z
                         //#endif
                 );
-                MatrixStack matrixStack = RenderSystem.getModelViewStack();
-                matrixStack.loadIdentity();
+                org.joml.Matrix4fStack matrixStack = RenderSystem.getModelViewStack();
+                matrixStack.identity();
                 matrixStack.translate(0, 0, -2000);
                 RenderSystem.applyModelViewMatrix();
                 DiffuseLighting.enableGuiDepthLighting();
@@ -809,7 +802,7 @@ public class ReplayHandler {
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
             if (msg instanceof Packet<?> packet) {
-                NetworkStateTransitionHandler.handle(ctx.channel().attr(ClientConnection.CLIENTBOUND_PROTOCOL_KEY), packet);
+                NetworkStateTransitionHandler.onDecoded(ctx, packet);
             }
             super.channelRead(ctx, msg);
         }
@@ -817,7 +810,7 @@ public class ReplayHandler {
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
             if (msg instanceof Packet<?> packet) {
-                NetworkStateTransitionHandler.handle(ctx.channel().attr(ClientConnection.SERVERBOUND_PROTOCOL_KEY), packet);
+                NetworkStateTransitionHandler.onEncoded(ctx, packet);
             }
             super.write(ctx, msg, promise);
         }

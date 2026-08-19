@@ -81,9 +81,9 @@ public abstract class AbstractTimelinePlayer extends EventRegistrations {
 
         //noinspection ConstantConditions
         TimerAccessor timerA = (TimerAccessor) timer;
-        //#if MC>=11200
         timerA.setTickLength(WrappedTimer.DEFAULT_MS_PER_TICK);
-        timer.tickDelta = timer.ticksThisFrame = 0;
+        timerA.setTickDeltaValue(0);
+        timer.ticksThisFrame = 0;
         //#else
         //$$ timer.timerSpeed = 1;
         //$$ timer.elapsedPartialTicks = timer.elapsedTicks = 0;
@@ -133,9 +133,10 @@ public abstract class AbstractTimelinePlayer extends EventRegistrations {
         RenderTickCounter renderTickCounter = ((MinecraftAccessor) mc).getTimer();
         if (renderTickCounter instanceof ReplayTimer) {
             ReplayTimer timer = (ReplayTimer) renderTickCounter;
-            timer.tickDelta += passedTicks;
-            timer.ticksThisFrame = (int) timer.tickDelta;
-            timer.tickDelta -= timer.ticksThisFrame;
+            TimerAccessor timerA = (TimerAccessor) timer;
+            timerA.setTickDeltaValue(timerA.getTickDeltaValue() + passedTicks);
+            timer.ticksThisFrame = (int) timerA.getTickDeltaValue();
+            timerA.setTickDeltaValue(timerA.getTickDeltaValue() - timer.ticksThisFrame);
         }
 
         lastTime = replayTime;

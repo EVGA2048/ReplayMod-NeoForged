@@ -3,30 +3,32 @@ package com.replaymod.replay.mixin;
 import com.replaymod.replay.camera.CameraEntity;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.GameRenderer;
-import net.minecraft.client.util.math.MatrixStack;
-import org.joml.Vector3f;
 import net.minecraft.entity.Entity;
+import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 
 @Mixin(GameRenderer.class)
 public class MixinCamera {
     @Shadow @Final private MinecraftClient client;
-    @Inject(
+
+    @ModifyArg(
             method = "renderWorld",
             at = @At(
                     value = "INVOKE",
-                    target = "Lnet/minecraft/client/render/Camera;getPitch()F"
-            )
+                    target = "Lnet/minecraft/client/render/WorldRenderer;setupFrustum(Lnet/minecraft/util/math/Vec3d;Lorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V"
+            ),
+            index = 1
     )
-    private void applyRoll(float float_1, long long_1, MatrixStack matrixStack, CallbackInfo ci) {
+    private Matrix4f applyRoll(Matrix4f view) {
         Entity entity = this.client.getCameraEntity() == null ? this.client.player : this.client.getCameraEntity();
-        if (entity instanceof CameraEntity) {
-            matrixStack.multiply(new org.joml.Quaternionf().fromAxisAngleDeg(new org.joml.Vector3f(0, 0, 1), ((CameraEntity) entity).roll));
+        if (entity instanceof CameraEntity cameraEntity) {
+            view.rotate(new Quaternionf().fromAxisAngleDeg(0, 0, 1, cameraEntity.roll));
         }
+        return view;
     }
 }

@@ -20,6 +20,7 @@ import de.johni0702.minecraft.gui.element.advanced.AbstractGuiTimeline;
 import de.johni0702.minecraft.gui.function.Draggable;
 import de.johni0702.minecraft.gui.utils.lwjgl.vector.Vector2f;
 import net.minecraft.client.render.BufferBuilder;
+import net.minecraft.client.render.BufferRenderer;
 import net.minecraft.client.render.Tessellator;
 import net.minecraft.client.render.VertexFormats;
 import org.apache.commons.lang3.tuple.Pair;
@@ -153,8 +154,7 @@ public class GuiKeyframeTimeline extends AbstractGuiTimeline<GuiKeyframeTimeline
 
                     final int color = 0xff0000ff;
                     Tessellator tessellator = Tessellator.getInstance();
-                    BufferBuilder buffer = tessellator.getBuffer();
-                    buffer.begin(net.minecraft.client.render.VertexFormat.DrawMode.LINE_STRIP, VertexFormats.LINES);
+                    BufferBuilder buffer = tessellator.begin(net.minecraft.client.render.VertexFormat.DrawMode.LINE_STRIP, VertexFormats.LINES);
 
                     // Start just below the top border of the replay timeline
                     Vector2f p1 = new Vector2f(replayTimelineLeft + positionXReplayTimeline, replayTimelineTop + BORDER_TOP);
@@ -178,7 +178,7 @@ public class GuiKeyframeTimeline extends AbstractGuiTimeline<GuiKeyframeTimeline
                     pushScissorState();
                     setScissorDisabled();
                     com.mojang.blaze3d.systems.RenderSystem.lineWidth(2);
-                    tessellator.draw();
+                    BufferRenderer.drawWithGlobalProgram(buffer.end());
                     popScissorState();
                     //#if MC<11700
                     //$$ GL11.glEnable(GL11.GL_TEXTURE_2D);

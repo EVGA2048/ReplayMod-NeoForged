@@ -5,6 +5,8 @@ import de.johni0702.minecraft.gui.utils.lwjgl.ReadableColor;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.render.BufferBuilder;
+import net.minecraft.client.render.BufferRenderer;
+import net.minecraft.client.render.GameRenderer;
 import net.minecraft.client.render.Tessellator;
 import net.minecraft.client.render.VertexFormat;
 import net.minecraft.client.render.VertexFormats;
@@ -125,70 +127,25 @@ public class MCVer {
     }
 
     public static void drawRect(int right, int bottom, int left, int top) {
-        //#if MC>=10800
         Tessellator tessellator = Tessellator.getInstance();
-        //#else
-        //$$ Tessellator tessellator = Tessellator.instance;
-        //#endif
-        //#if MC>=10904
-        BufferBuilder vertexBuffer = tessellator.getBuffer();
-        //#else
-        //#if MC>=10800
-        //$$ WorldRenderer vertexBuffer = tessellator.getWorldRenderer();
-        //#else
-        //$$ Tessellator vertexBuffer = tessellator;
-        //#endif
-        //#endif
-        //#if MC>=10809
-        //#if MC>=11700
-        vertexBuffer.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION);
-        //#else
-        //$$ vertexBuffer.begin(GL11.GL_QUADS, VertexFormats.POSITION);
-        //#endif
-        vertexBuffer.vertex(right, top, 0).next();
-        vertexBuffer.vertex(left, top, 0).next();
-        vertexBuffer.vertex(left, bottom, 0).next();
-        vertexBuffer.vertex(right, bottom, 0).next();
-        //#else
-        //$$ vertexBuffer.startDrawingQuads();
-        //$$ vertexBuffer.addVertex(right, top, 0);
-        //$$ vertexBuffer.addVertex(left, top, 0);
-        //$$ vertexBuffer.addVertex(left, bottom, 0);
-        //$$ vertexBuffer.addVertex(right, bottom, 0);
-        //#endif
-        tessellator.draw();
+        RenderSystem.setShader(GameRenderer::getPositionProgram);
+        BufferBuilder vertexBuffer = tessellator.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION);
+        vertexBuffer.vertex(right, top, 0);
+        vertexBuffer.vertex(left, top, 0);
+        vertexBuffer.vertex(left, bottom, 0);
+        vertexBuffer.vertex(right, bottom, 0);
+        BufferRenderer.drawWithGlobalProgram(vertexBuffer.end());
     }
 
     public static void drawRect(int x, int y, int width, int height, ReadableColor tl, ReadableColor tr, ReadableColor bl, ReadableColor br) {
-        //#if MC>=10800
         Tessellator tessellator = Tessellator.getInstance();
-        BufferBuilder vertexBuffer = tessellator.getBuffer();
-        //#else
-        //$$ Tessellator tessellator = Tessellator.instance;
-        //$$ Tessellator vertexBuffer = tessellator;
-        //#endif
-        //#if MC>=10809
-        //#if MC>=11700
-        vertexBuffer.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
-        //#else
-        //$$ vertexBuffer.begin(GL11.GL_QUADS, VertexFormats.POSITION_COLOR);
-        //#endif
-        vertexBuffer.vertex(x, y + height, 0).color(bl.getRed(), bl.getGreen(), bl.getBlue(), bl.getAlpha()).next();
-        vertexBuffer.vertex(x + width, y + height, 0).color(br.getRed(), br.getGreen(), br.getBlue(), br.getAlpha()).next();
-        vertexBuffer.vertex(x + width, y, 0).color(tr.getRed(), tr.getGreen(), tr.getBlue(), tr.getAlpha()).next();
-        vertexBuffer.vertex(x, y, 0).color(tl.getRed(), tl.getGreen(), tl.getBlue(), tl.getAlpha()).next();
-        //#else
-        //$$ vertexBuffer.startDrawingQuads();
-        //$$ vertexBuffer.setColorRGBA(bl.getRed(), bl.getGreen(), bl.getBlue(), bl.getAlpha());
-        //$$ vertexBuffer.addVertex(x, y + height, 0);
-        //$$ vertexBuffer.setColorRGBA(br.getRed(), br.getGreen(), br.getBlue(), br.getAlpha());
-        //$$ vertexBuffer.addVertex(x + width, y + height, 0);
-        //$$ vertexBuffer.setColorRGBA(tr.getRed(), tr.getGreen(), tr.getBlue(), tr.getAlpha());
-        //$$ vertexBuffer.addVertex(x + width, y, 0);
-        //$$ vertexBuffer.setColorRGBA(tl.getRed(), tl.getGreen(), tl.getBlue(), tl.getAlpha());
-        //$$ vertexBuffer.addVertex(x, y, 0);
-        //#endif
-        tessellator.draw();
+        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+        BufferBuilder vertexBuffer = tessellator.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
+        vertexBuffer.vertex(x, y + height, 0).color(bl.getRed(), bl.getGreen(), bl.getBlue(), bl.getAlpha());
+        vertexBuffer.vertex(x + width, y + height, 0).color(br.getRed(), br.getGreen(), br.getBlue(), br.getAlpha());
+        vertexBuffer.vertex(x + width, y, 0).color(tr.getRed(), tr.getGreen(), tr.getBlue(), tr.getAlpha());
+        vertexBuffer.vertex(x, y, 0).color(tl.getRed(), tl.getGreen(), tl.getBlue(), tl.getAlpha());
+        BufferRenderer.drawWithGlobalProgram(vertexBuffer.end());
     }
 
     public static void bindTexture(Identifier identifier) {

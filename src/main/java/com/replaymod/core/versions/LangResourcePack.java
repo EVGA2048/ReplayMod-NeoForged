@@ -64,8 +64,12 @@ public class LangResourcePack extends AbstractFileResourcePack {
 
     private final Path basePath;
     public LangResourcePack() {
-        //#if MC>=11903
-        super(NAME, true);
+        super(new net.minecraft.resource.ResourcePackInfo(
+                NAME,
+                net.minecraft.text.Text.literal(NAME),
+                net.minecraft.resource.ResourcePackSource.BUILTIN,
+                java.util.Optional.empty()
+        ));
         //#else
         //$$ super(new File(NAME));
         //#endif
@@ -247,7 +251,7 @@ public class LangResourcePack extends AbstractFileResourcePack {
                     .map(LANG_FILE_NAME_PATTERN::matcher)
                     .filter(Matcher::matches)
                     .map(matcher -> String.format("%s_%s.json", matcher.group(1), matcher.group(1)))
-                    .map(name -> new Identifier(ReplayMod.MOD_ID, "lang/" + name))
+                    .map(name -> Identifier.of(ReplayMod.MOD_ID, "lang/" + name))
                     .forEach(consumer);
         } catch (IOException e) {
             e.printStackTrace();

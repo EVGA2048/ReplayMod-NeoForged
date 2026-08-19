@@ -118,7 +118,7 @@ public abstract class AbstractGuiScreen<T extends AbstractGuiScreen<T>> extends 
                     break;
                 case DIRT:
                     //#if MC>=12000
-                    wrapped.renderBackgroundTexture(renderer.getContext());
+                    wrapped.renderBackground(renderer.getContext(), 0, 0, 0);
                     //#elseif MC>=11904
                     //$$ wrapped.renderBackgroundTexture(renderer.getMatrixStack());
                     //#elseif MC>=11600

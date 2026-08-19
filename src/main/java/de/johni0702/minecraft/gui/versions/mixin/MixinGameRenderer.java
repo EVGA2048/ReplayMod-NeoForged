@@ -4,6 +4,7 @@ package de.johni0702.minecraft.gui.versions.mixin;
 import de.johni0702.minecraft.gui.versions.callbacks.PostRenderScreenCallback;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.GameRenderer;
+import net.minecraft.client.render.RenderTickCounter;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -46,11 +47,9 @@ public class MixinGameRenderer {
     //#endif
 
     @Inject(method = "render", at = @At(value = "INVOKE", target = "Lnet/neoforged/neoforge/client/ClientHooks;drawScreen(Lnet/minecraft/client/gui/screen/Screen;Lnet/minecraft/client/gui/DrawContext;IIF)V", shift = At.Shift.AFTER))
-    private void postRenderScreen(float partialTicks, long nanoTime, boolean renderWorld, CallbackInfo ci) {
-        //#if MC<11600
-        //$$ MatrixStack context = new MatrixStack();
-        //#endif
-        PostRenderScreenCallback.EVENT.invoker().postRenderScreen(context, partialTicks);
+    private void postRenderScreen(RenderTickCounter tickCounter, boolean renderWorld, CallbackInfo ci) {
+        if (context == null) return;
+        PostRenderScreenCallback.EVENT.invoker().postRenderScreen(context, tickCounter.getTickDelta(false));
     }
 }
 //#endif

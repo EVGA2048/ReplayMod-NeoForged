@@ -104,33 +104,30 @@ public class MCVer {
         //#endif
     }
 
-    public static NetworkState asMc(State state) {
+    public static NetworkState<?> asMc(State state) {
         switch (state) {
-            case HANDSHAKE: return NetworkState.HANDSHAKING;
-            case STATUS: return NetworkState.STATUS;
-            case LOGIN: return NetworkState.LOGIN;
-            //#if MC>=12002
-            case CONFIGURATION: return NetworkState.CONFIGURATION;
-            //#endif
-            case PLAY: return NetworkState.PLAY;
+            case HANDSHAKE: return net.minecraft.network.state.HandshakeStates.C2S;
+            case STATUS: return net.minecraft.network.state.QueryStates.S2C;
+            case LOGIN: return net.minecraft.network.state.LoginStates.S2C;
+            case CONFIGURATION: return net.minecraft.network.state.ConfigurationStates.S2C;
+            case PLAY: return net.minecraft.network.state.PlayStateFactories.S2C.bind(buf ->
+                    new net.minecraft.network.RegistryByteBuf(buf, net.minecraft.registry.DynamicRegistryManager.EMPTY));
         }
         throw new IllegalArgumentException("Unexpected value: " + state);
     }
 
-    public static State fromMc(NetworkState mcState) {
-        switch (mcState) {
+    public static State fromMc(NetworkState<?> mcState) {
+        switch (mcState.id()) {
             case HANDSHAKING: return State.HANDSHAKE;
             case STATUS: return State.STATUS;
             case LOGIN: return State.LOGIN;
-            //#if MC>=12002
             case CONFIGURATION: return State.CONFIGURATION;
-            //#endif
             case PLAY: return State.PLAY;
         }
         throw new IllegalArgumentException("Unexpected value: " + mcState);
     }
 
-    public static PacketTypeRegistry getPacketTypeRegistry(NetworkState state) {
+    public static PacketTypeRegistry getPacketTypeRegistry(NetworkState<?> state) {
         return getPacketTypeRegistry(fromMc(state));
     }
 
@@ -398,7 +395,7 @@ public class MCVer {
 
     public static void pushMatrix() {
         //#if MC>=11700
-        RenderSystem.getModelViewStack().push();
+        RenderSystem.getModelViewStack().pushMatrix();
         //#else
         //$$ GlStateManager.pushMatrix();
         //#endif
@@ -406,7 +403,7 @@ public class MCVer {
 
     public static void popMatrix() {
         //#if MC>=11700
-        RenderSystem.getModelViewStack().pop();
+        RenderSystem.getModelViewStack().popMatrix();
         RenderSystem.applyModelViewMatrix();
         //#else
         //$$ GlStateManager.popMatrix();
@@ -446,15 +443,10 @@ public class MCVer {
         buffer.vertex(p1.x, p1.y, p1.z)
                 .color(r, g, b, a)
                 //#if MC>=11700
-                .normal(n.x, n.y, n.z)
-                //#endif
-                .next();
+                .normal(n.x, n.y, n.z);
         buffer.vertex(p2.x, p2.y, p2.z)
                 .color(r, g, b, a)
-                //#if MC>=11700
-                .normal(n.x, n.y, n.z)
-                //#endif
-                .next();
+                .normal(n.x, n.y, n.z);
     }
 
     public static void bindTexture(Identifier id) {

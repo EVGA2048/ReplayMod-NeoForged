@@ -916,7 +916,7 @@ class Patterns {
     @Pattern
     public Object channel(CustomPayloadS2CPacket packet) {
         //#if MC>=12002
-        return packet.payload().id();
+        return packet.payload().getId().id();
         //#else
         //$$ return packet.getChannel();
         //#endif
@@ -926,7 +926,7 @@ class Patterns {
     @Pattern
     public Integer getPacketId(NetworkState state, NetworkSide side, Packet<?> packet) throws Exception {
         //#if MC>=12002
-        return state.getHandler(side).getId(packet);
+        return packet.getPacketId().hashCode();
         //#else
         //$$ return state.getPacketId(side, packet);
         //#endif
