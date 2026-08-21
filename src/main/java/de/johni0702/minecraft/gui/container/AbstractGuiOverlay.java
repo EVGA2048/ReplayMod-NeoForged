@@ -223,6 +223,7 @@ public abstract class AbstractGuiOverlay<T extends AbstractGuiOverlay<T>> extend
             for (int layer = 0; layer <= layers; layer++) {
                 draw(renderer, screenSize, renderInfo.layer(layer));
             }
+            stack.draw();
         }
 
         { on(PreTickCallback.EVENT, () -> invokeAll(Tickable.class, Tickable::tick)); }

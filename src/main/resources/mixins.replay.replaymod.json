@@ -51,6 +51,11 @@
     //$$ "MixinFMLClientHandler",
     //#endif
     "MixinKeyboardListener",
+    "MixinNetworkRegistry",
+    "MixinClientCommonNetworkHandler",
+    "MixinClientConnectionReplay",
+    "MixinReconfiguringScreen",
+    "Mixin_DownloadingTerrainScreen",
     "MixinPlayerControllerMP",
     "MixinRenderItem",
     "MixinRenderLivingBase",

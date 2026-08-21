@@ -12,6 +12,7 @@ import com.replaymod.recording.packet.PacketListener;
 import io.netty.channel.Channel;
 import io.netty.util.AttributeKey;
 import net.minecraft.network.ClientConnection;
+import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -33,7 +34,7 @@ import org.apache.logging.log4j.Logger;
 //$$ import io.netty.channel.ChannelHandler;
 //#endif
 
-@EventBusSubscriber(modid = ReplayMod.MOD_ID)
+@EventBusSubscriber(modid = ReplayMod.MOD_ID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
 public class ReplayModRecording implements Module {
 
     private static final Logger LOGGER = LogManager.getLogger();
@@ -95,13 +96,15 @@ public class ReplayModRecording implements Module {
     //#endif
 
     public void initiateRecording(ClientConnection networkManager) {
+        if (connectionEventHandler == null) return;
+        if (connectionEventHandler.getPacketListener() != null) return;
         Channel channel = ((NetworkManagerAccessor) networkManager).getChannel();
+        if (channel == null) return;
         if (channel.pipeline().get("ReplayModReplay_replaySender") != null) return;
-        //#if MC>=11400
         if (channel.hasAttr(ATTR_CHECKED)) return;
-        channel.attr(ATTR_CHECKED).set(null);
-        //#endif
-        connectionEventHandler.onConnectedToServerEvent(networkManager);
+        if (connectionEventHandler.onConnectedToServerEvent(networkManager)) {
+            channel.attr(ATTR_CHECKED).set(null);
+        }
     }
 
     public ConnectionEventHandler getConnectionEventHandler() {

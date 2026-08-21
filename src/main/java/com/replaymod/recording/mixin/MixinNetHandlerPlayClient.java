@@ -1,10 +1,12 @@
 package com.replaymod.recording.mixin;
 
 import com.replaymod.core.versions.MCVer;
+import com.replaymod.recording.ReplayModRecording;
 import com.replaymod.recording.handler.RecordingEventHandler;
 import com.replaymod.replaystudio.lib.viaversion.api.protocol.packet.State;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
+import net.minecraft.network.packet.s2c.play.GameJoinS2CPacket;
 import net.minecraft.network.packet.s2c.play.PlayerRespawnS2CPacket;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -42,6 +44,13 @@ public abstract class MixinNetHandlerPlayClient {
 
     public RecordingEventHandler getRecordingEventHandler() {
         return ((RecordingEventHandler.RecordingEventSender) mcStatic.worldRenderer).getRecordingEventHandler();
+    }
+
+    @Inject(method = "onGameJoin", at = @At("HEAD"))
+    private void replayModInitiateRecording(GameJoinS2CPacket packet, CallbackInfo ci) {
+        if (ReplayModRecording.instance != null) {
+            ReplayModRecording.instance.initiateRecording(((ClientPlayNetworkHandler) (Object) this).getConnection());
+        }
     }
 
     /**

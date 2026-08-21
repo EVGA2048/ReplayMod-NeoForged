@@ -16,12 +16,15 @@ import com.replaymod.replay.camera.CameraControllerRegistry;
 import com.replaymod.replay.camera.CameraEntity;
 import com.replaymod.replay.camera.ClassicCameraController;
 import com.replaymod.replay.camera.VanillaCameraController;
+import com.replaymod.recording.mixin.NetworkManagerAccessor;
 import com.replaymod.replay.gui.screen.GuiModCompatWarning;
 import com.replaymod.replay.handler.GuiHandler;
 import com.replaymod.replaystudio.data.Marker;
 import com.replaymod.replaystudio.replay.ReplayFile;
+import io.netty.channel.Channel;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
+import net.minecraft.network.ClientConnection;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -48,6 +51,23 @@ public class ReplayModReplay implements Module {
 
     public ReplayHandler getReplayHandler() {
         return replayHandler;
+    }
+
+    /**
+     * Replay 用 EmbeddedChannel 喂包，NeoForge 会把它当成原版服然后踢掉。
+     * 构造 ReplayHandler 时 packet 可能已经在飞，不能只看 getReplayHandler()。
+     */
+    public static boolean isReplayConnection(ClientConnection connection) {
+        if (connection != null) {
+            try {
+                Channel channel = ((NetworkManagerAccessor) connection).getChannel();
+                if (channel != null && channel.pipeline().get("ReplayModReplay_replaySender") != null) {
+                    return true;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return instance != null && instance.replayHandler != null;
     }
 
     public ReplayModReplay(ReplayMod core) {

@@ -326,12 +326,13 @@ public class ReplayHandler {
         channel.pipeline().addLast("ReplayModReplay_replaySender", fullReplaySender);
         //#if MC>=12002
         channel.pipeline().addLast("ReplayModReplay_transition", new DummyNetworkStateTransitionHandler());
-        channel.pipeline().addLast("bundler", new PacketBundler(net.minecraft.network.state.LoginStates.S2C.bundleHandler()));
+        channel.pipeline().addLast("bundler", new DynamicPacketBundler());
         //#elseif MC>=11904
         //$$ channel.pipeline().addLast("bundler", new PacketBundler(NetworkSide.CLIENTBOUND));
         //#endif
         channel.pipeline().addLast("packet_handler", networkManager);
         channel.pipeline().fireChannelActive();
+        net.neoforged.neoforge.network.registration.NetworkRegistry.configureMockConnection(networkManager);
 
         // MC usually transitions from handshake to login via the packets it sends.
         // We don't send any packets (there is no server to receive them), so we need to switch manually.
@@ -803,6 +804,7 @@ public class ReplayHandler {
         public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
             if (msg instanceof Packet<?> packet) {
                 NetworkStateTransitionHandler.onDecoded(ctx, packet);
+                DynamicPacketBundler.refresh(ctx);
             }
             super.channelRead(ctx, msg);
         }
@@ -813,6 +815,38 @@ public class ReplayHandler {
                 NetworkStateTransitionHandler.onEncoded(ctx, packet);
             }
             super.write(ctx, msg, promise);
+        }
+    }
+
+    private static class DynamicPacketBundler extends io.netty.channel.ChannelInboundHandlerAdapter {
+        private net.minecraft.network.handler.PacketBundleHandler handler;
+        private PacketBundler delegate;
+
+        static void refresh(ChannelHandlerContext ctx) {
+            if (!(ctx.pipeline().get("bundler") instanceof DynamicPacketBundler)) {
+                ctx.pipeline().replace("bundler", "bundler", new DynamicPacketBundler());
+            }
+        }
+
+        @Override
+        public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+            ClientConnection connection = ctx.pipeline().get(ClientConnection.class);
+            net.minecraft.network.handler.PacketBundleHandler next = null;
+            if (connection != null && connection.getInboundProtocol() != null) {
+                next = connection.getInboundProtocol().bundleHandler();
+            }
+            if (next != handler) {
+                handler = next;
+                delegate = next != null ? new PacketBundler(next) : null;
+                if (delegate != null) {
+                    delegate.handlerAdded(ctx);
+                }
+            }
+            if (delegate == null) {
+                ctx.fireChannelRead(msg);
+            } else {
+                delegate.channelRead(ctx, msg);
+            }
         }
     }
     //#endif

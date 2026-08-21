@@ -30,6 +30,17 @@
 
 录像和回放优先。下面这些还没跟上或没怎么测：Iris 的 ODS、部分键鼠 / 天空 mixin、360° 和立体导出、路径预览。和 Sodium、Iris 等渲染模组叠在一起，请自备日志。
 
+### 1.21.1 CONFIG 握手（已知，暂搁）
+
+1.20.5+ 进世界前会走 CONFIGURATION。旧录制器把 handler 插在拆包器前面，`.mcpr` 里 LoginSuccess 之后存的是 **TCP 碎片** 而不是完整包。
+
+当前分支已经改了两处：
+
+- **新录像**：录制器插在 `decompress` 之后、`decoder` / `inbound_config` 之前；协议切换后会重新 inject。请用本构建重新录。
+- **旧录像回放**：会尝试把 TCP 流拼回帧、对损坏 zlib 做有限抢救。大整合包（NeoForge frozen_registry 等）的 CONFIG 流仍可能对不齐，回放会停在加载界面，到不了 Ready / GameJoin。这份旧录像救不回来，**不要拿它当测试基准**。
+
+未完：旧 `.mcpr` 完整抢救、WLAN 无关；先保证新录的能播。
+
 ## 自己构建
 
 JDK 21，然后：
@@ -51,3 +62,5 @@ Replay Mod 是 [CrushedPixel](https://github.com/CrushedPixel) 和 [johni0702](h
 ---
 
 **English** — Unofficial Replay Mod port for NeoForge. **1.21.1 only** right now (version `0.4-1.21.1`). Not official; please do not ask the Replay Mod authors for help with this fork. Install the Release jar (not `dev-shadow`), and do not also install Fabric ReplayMod or a Connector-mapped copy. Build: `./gradlew remapJar` on branch `1.21.1`, JDK 21. GPL-3.0-or-later.
+
+Known issue: 1.20.5+ CONFIG handshake. Old recordings stored TCP fragments after LoginSuccess and can stick on the loading screen. Re-record with this build (inject after decompress). Salvaging those old `.mcpr` files is paused.

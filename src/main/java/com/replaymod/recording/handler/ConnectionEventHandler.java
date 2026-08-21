@@ -63,49 +63,45 @@ public class ConnectionEventHandler {
         this.core = core;
     }
 
-    public void onConnectedToServerEvent(ClientConnection networkManager) {
+    /**
+     * @return true if recording started or was permanently skipped; false to retry later
+     */
+    public boolean onConnectedToServerEvent(ClientConnection networkManager) {
         try {
             boolean local = networkManager.isLocal();
             if (local) {
-                //#if MC>=10800
-                //#if MC>=11600
-                if (mc.getServer().getWorld(World.OVERWORLD).isDebugWorld()) {
-                //#else
-                //#if MC>=11400
-                //$$ if (mc.getServer().getWorld(DimensionType.OVERWORLD).getGeneratorType() == LevelGeneratorType.DEBUG_ALL_BLOCK_STATES) {
-                //#else
-                //$$ if (mc.getIntegratedServer().getEntityWorld().getWorldType() == WorldType.DEBUG_ALL_BLOCK_STATES) {
-                //#endif
-                //#endif
+                var server = mc.getServer();
+                var overworld = server == null ? null : server.getWorld(World.OVERWORLD);
+                if (overworld != null && overworld.isDebugWorld()) {
                     logger.info("Debug World recording is not supported.");
-                    return;
+                    return true;
                 }
-                //#endif
                 if(!core.getSettingsRegistry().get(Setting.RECORD_SINGLEPLAYER)) {
                     logger.info("Singleplayer Recording is disabled");
-                    return;
+                    return true;
                 }
             } else {
                 if(!core.getSettingsRegistry().get(Setting.RECORD_SERVER)) {
                     logger.info("Multiplayer Recording is disabled");
-                    return;
+                    return true;
                 }
             }
 
-            ServerInfo serverInfo;
-            //#if MC>=11903
-            serverInfo = networkManager.getPacketListener() instanceof ClientLoginNetworkHandlerAccessor loginNetworkHandler
-                    ? loginNetworkHandler.getServerInfo()
-                    : null;
-            //#else
-            //$$ serverInfo = mc.getCurrentServerEntry();
-            //#endif
+            ServerInfo serverInfo = null;
+            if (networkManager.getPacketListener() instanceof ClientLoginNetworkHandlerAccessor loginNetworkHandler) {
+                serverInfo = loginNetworkHandler.getServerInfo();
+            }
+            if (serverInfo == null) {
+                serverInfo = mc.getCurrentServerEntry();
+            }
 
             String worldName;
             String serverName = null;
             boolean autoStart = core.getSettingsRegistry().get(Setting.AUTO_START_RECORDING);
             if (local) {
-                //#if MC>=11600
+                if (mc.getServer() == null) {
+                    return false;
+                }
                 worldName = mc.getServer().getSaveProperties().getLevelName();
                 //#else
                 //$$ worldName = mc.getServer().getLevelName();
@@ -131,8 +127,8 @@ public class ConnectionEventHandler {
                     autoStart = autoStartServer;
                 }
             } else {
-                logger.info("Recording not started as the world is neither local nor remote (probably a replay).");
-                return;
+                logger.info("Recording not started as the world is neither local nor remote (probably too early).");
+                return false;
             }
 
             if (ReplayMod.isMinimalMode()) {
@@ -153,15 +149,10 @@ public class ConnectionEventHandler {
             metaData.setGenerator("ReplayMod v" + ReplayMod.instance.getVersion());
             metaData.setDate(System.currentTimeMillis());
             metaData.setMcVersion(ReplayMod.instance.getMinecraftVersion());
+            metaData.setProtocolVersion(com.replaymod.core.versions.MCVer.getProtocolVersion());
             packetListener = new PacketListener(core, outputPath, replayFile, metaData);
             Channel channel = ((NetworkManagerAccessor) networkManager).getChannel();
-            if (channel.pipeline().get(PacketListener.DECODER_KEY) != null) {
-                // Regular channel, we'll inject our recorder directly before the decoder
-                channel.pipeline().addBefore(PacketListener.DECODER_KEY, PacketListener.RAW_RECORDER_KEY, packetListener);
-            } else {
-                // Integrated server passes packets directly, there's no splitting, decompression or decoding
-                channel.pipeline().addFirst(PacketListener.RAW_RECORDER_KEY, packetListener);
-            }
+            PacketListener.inject(channel, packetListener);
 
             recordingEventHandler = new RecordingEventHandler(packetListener);
             recordingEventHandler.register();
@@ -177,9 +168,11 @@ public class ConnectionEventHandler {
             } else {
                 packetListener.addMarker(MarkerProcessor.MARKER_NAME_START_CUT, 0);
             }
+            return true;
         } catch (Throwable e) {
             e.printStackTrace();
             core.printWarningToChat("replaymod.chat.recordingfailed");
+            return false;
         }
     }
 

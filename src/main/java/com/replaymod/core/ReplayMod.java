@@ -83,8 +83,16 @@ public class ReplayMod implements Module, Scheduler {
 
         I18n.setI18n(net.minecraft.client.resource.language.I18n::translate);
 
-        // Check Minecraft protocol version for compatibility
-        if (!ProtocolVersion.isRegistered(MCVer.getProtocolVersion()) && !Boolean.parseBoolean(System.getProperty("replaymod.skipversioncheck", "false"))) {
+        // ReplayStudio d9f7c11 只注册到 1.20.4。1.21.1 协议 767 未注册时不要进最小模式，
+        // 否则暂停/停止录像会被 GUI 直接拦住。
+        int protocol = MCVer.getProtocolVersion();
+        if (!ProtocolVersion.isRegistered(protocol)) {
+            org.apache.logging.log4j.LogManager.getLogger().warn(
+                    "ReplayStudio has no ProtocolVersion for protocol {}; recording controls stay enabled.",
+                    protocol);
+        }
+        if (!ProtocolVersion.isRegistered(protocol)
+                && Boolean.parseBoolean(System.getProperty("replaymod.forceminimalmode", "false"))) {
             minimalMode = true;
         }
 
@@ -235,11 +243,21 @@ public class ReplayMod implements Module, Scheduler {
         return ReplayMod.instance.minimalMode;
     }
 
+    /**
+     * ReplayStudio d9f7c11 不认识 1.21.x 协议。读写 .mcpr 若再走它的编解码，
+     * 配置阶段包会被改坏，回放就会停在加载全景、世界进不去。
+     */
+    public static boolean bypassReplayStudioIo() {
+        return isMinimalMode() || !ProtocolVersion.isRegistered(MCVer.getProtocolVersion());
+    }
+
     public static boolean isCompatible(int fileFormatVersion, int protocolVersion) {
-        if (isMinimalMode()) {
-            return protocolVersion == MCVer.getProtocolVersion();
-        } else {
-            return new ReplayStudio().isCompatible(fileFormatVersion, protocolVersion, MCVer.getProtocolVersion());
+        if (protocolVersion == MCVer.getProtocolVersion()) {
+            return true;
         }
+        if (isMinimalMode()) {
+            return false;
+        }
+        return new ReplayStudio().isCompatible(fileFormatVersion, protocolVersion, MCVer.getProtocolVersion());
     }
 }

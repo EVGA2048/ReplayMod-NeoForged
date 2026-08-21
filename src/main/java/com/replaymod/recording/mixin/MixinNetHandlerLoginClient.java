@@ -26,7 +26,7 @@ public abstract class MixinNetHandlerLoginClient {
         initiateRecording(packet);
     }
 
-    @Inject(method = "onSuccess", at=@At("HEAD"))
+    @Inject(method = {"onSuccess", "onLoginSuccess"}, at=@At("HEAD"), require = 0)
     private void lateInitiateRecording(LoginSuccessS2CPacket packet, CallbackInfo ci) {
         initiateRecording(packet);
     }

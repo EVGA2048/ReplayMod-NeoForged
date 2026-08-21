@@ -128,6 +128,7 @@ public abstract class AbstractGuiScreen<T extends AbstractGuiScreen<T>> extends 
                     //#endif
                     break;
             }
+            renderer.getContext().draw();
             if (title != null) {
                 ReadableDimension titleSize = title.getMinSize();
                 int x = screenSize.getWidth() / 2 - titleSize.getWidth() / 2;
@@ -222,6 +223,12 @@ public abstract class AbstractGuiScreen<T extends AbstractGuiScreen<T>> extends 
         }
 
         @Override
+        public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
+            this.renderPanoramaBackground(context, delta);
+            this.renderDarkening(context);
+        }
+
+        @Override
         public Text getTitle() {
             GuiLabel title = AbstractGuiScreen.this.title;
             return literalText(title == null ? "" : title.getText());
@@ -257,6 +264,7 @@ public abstract class AbstractGuiScreen<T extends AbstractGuiScreen<T>> extends 
             for (int layer = 0; layer <= layers; layer++) {
                 draw(renderer, screenSize, renderInfo.layer(layer));
             }
+            stack.draw();
         }
 
         //#if MC>=11400

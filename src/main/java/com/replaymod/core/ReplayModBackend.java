@@ -12,7 +12,7 @@ import net.neoforged.fml.loading.LoadingModList;
 import static com.replaymod.core.ReplayMod.MOD_ID;
 
 @EventBusSubscriber(modid = MOD_ID, value = Dist.CLIENT)
-@Mod(MOD_ID)
+@Mod(value = MOD_ID, dist = Dist.CLIENT)
 public class ReplayModBackend {
     private final ReplayMod mod = new ReplayMod(this);
 

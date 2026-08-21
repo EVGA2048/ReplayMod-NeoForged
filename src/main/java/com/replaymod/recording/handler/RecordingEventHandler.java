@@ -73,7 +73,7 @@ public class RecordingEventHandler extends EventRegistrations {
     private final PacketListener packetListener;
 
     private Double lastX, lastY, lastZ;
-    private final List<ItemStack> playerItems = DefaultedList.ofSize(6, ItemStack.EMPTY);
+    private final List<ItemStack> playerItems = DefaultedList.ofSize(EquipmentSlot.values().length, ItemStack.EMPTY);
     private int ticksSinceLastCorrection;
     private boolean wasSleeping;
     private int lastRiding = -1;
@@ -132,7 +132,7 @@ public class RecordingEventHandler extends EventRegistrations {
             //#endif
             lastX = lastY = lastZ = null;
             //#if MC>=11100
-            playerItems.clear();
+            Collections.fill(playerItems, ItemStack.EMPTY);
             //#else
             //$$ Collections.fill(playerItems, null);
             //#endif

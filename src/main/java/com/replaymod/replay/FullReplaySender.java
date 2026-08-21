@@ -21,14 +21,17 @@ import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandler.Sharable;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
+import io.netty.handler.codec.DecoderException;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.DownloadingTerrainScreen;
 import net.minecraft.client.gui.screen.NoticeScreen;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
+import net.minecraft.network.ClientConnection;
+import net.minecraft.network.NetworkPhase;
 import net.minecraft.network.NetworkState;
-import net.minecraft.network.packet.Packet;
 import net.minecraft.network.PacketByteBuf;
+import net.minecraft.network.packet.Packet;
 import net.minecraft.network.packet.s2c.play.GameMessageS2CPacket;
 import net.minecraft.network.packet.s2c.common.CustomPayloadS2CPacket;
 import net.minecraft.network.packet.s2c.common.DisconnectS2CPacket;
@@ -144,11 +147,14 @@ import net.minecraft.network.NetworkSide;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.zip.DataFormatException;
+import java.util.zip.Inflater;
 
 import static com.replaymod.core.versions.MCVer.*;
 import static com.replaymod.replaystudio.util.Utils.readInt;
@@ -164,7 +170,11 @@ public class FullReplaySender extends ChannelDuplexHandler implements ReplaySend
      * These packets are ignored completely during replay.
      */
     private static final List<Class> BAD_PACKETS = Arrays.<Class>asList(
-            //#if MC>=11404
+            net.minecraft.network.packet.s2c.login.LoginHelloS2CPacket.class,
+            net.minecraft.network.packet.s2c.common.ServerTransferS2CPacket.class,
+            net.minecraft.network.packet.s2c.common.CookieRequestS2CPacket.class,
+            net.minecraft.network.packet.s2c.common.StoreCookieS2CPacket.class,
+            net.minecraft.network.packet.s2c.play.VehicleMoveS2CPacket.class,
             PlayerActionResponseS2CPacket.class,
             //#endif
             //#if MC>=11400
@@ -245,6 +255,7 @@ public class FullReplaySender extends ChannelDuplexHandler implements ReplaySend
      * Which protocol (state) we're currently in.
      */
     private PacketTypeRegistry registry = getPacketTypeRegistry(State.LOGIN);
+    private final RawNetworkAssembler packetAssembler = new RawNetworkAssembler();
 
     /**
      * Whether we need to restart the current replay. E.g. when jumping backwards in time
@@ -422,70 +433,112 @@ public class FullReplaySender extends ChannelDuplexHandler implements ReplaySend
 
         if (msg instanceof byte[]) {
             try {
-                Packet p = deserializePacket((byte[]) msg, ctx);
-
-                if (p != null) {
-                    p = processPacket(p);
-                    if (p != null) {
-                        super.channelRead(ctx, p);
+                boolean first = true;
+                for (byte[] packetBytes : packetAssembler.feed((byte[]) msg)) {
+                    if (!first) {
+                        waitForProtocolSwitch(ctx);
                     }
-
-                    maybeRemoveDeadEntities(p);
-
-                    //#if MC>=11400
-                    if (p instanceof ChunkDataS2CPacket) {
-                        Runnable doLightUpdates = () -> {
-                            ClientWorld world = mc.world;
-                            if (world != null) {
-                                //#if MC>=11800
-                                while (!world.hasNoChunkUpdaters()) {
-                                    world.runQueuedChunkUpdates();
-                                }
-                                //#endif
-                                LightingProvider provider = world.getChunkManager().getLightingProvider();
-                                while (provider.hasUpdates()) {
-                                    //#if MC>=12000
-                                    provider.doLightUpdates();
-                                    //#else
-                                    //$$ provider.doLightUpdates(Integer.MAX_VALUE, true, true);
-                                    //#endif
-                                }
-                            }
-                        };
-                        if (mc.isOnThread()) {
-                            doLightUpdates.run();
-                        } else {
-                            mc.send(doLightUpdates);
+                    first = false;
+                    try {
+                        dispatchPacketBytes(ctx, packetBytes);
+                    } catch (Exception e) {
+                        if (!isSkippableReplayDecode(e)) {
+                            ReplayModReplay.LOGGER.warn("Skipping replay packet: {}", e.toString());
                         }
                     }
-                    //#endif
                 }
             } catch (Exception e) {
-                // We'd rather not have a failure parsing one packet screw up the whole replay process
-                e.printStackTrace();
+                if (!isSkippableReplayDecode(e)) {
+                    ReplayModReplay.LOGGER.warn("Replay packet stream error: {}", e.toString());
+                }
             }
         }
 
     }
 
+    private void dispatchPacketBytes(ChannelHandlerContext ctx, byte[] packetBytes) throws Exception {
+        Packet p = deserializePacket(packetBytes, ctx);
+        if (p == null) {
+            return;
+        }
+        p = processPacket(p);
+        if (p != null) {
+            super.channelRead(ctx, p);
+        }
+        maybeRemoveDeadEntities(p);
+        if (p instanceof ChunkDataS2CPacket) {
+            Runnable doLightUpdates = () -> {
+                ClientWorld world = mc.world;
+                if (world != null) {
+                    while (!world.hasNoChunkUpdaters()) {
+                        world.runQueuedChunkUpdates();
+                    }
+                    LightingProvider provider = world.getChunkManager().getLightingProvider();
+                    while (provider.hasUpdates()) {
+                        provider.doLightUpdates();
+                    }
+                }
+            };
+            if (mc.isOnThread()) {
+                doLightUpdates.run();
+            } else {
+                mc.send(doLightUpdates);
+            }
+        }
+    }
+
+    private void waitForProtocolSwitch(ChannelHandlerContext ctx) throws InterruptedException {
+        while (!ctx.channel().config().isAutoRead()) {
+            if (mc.isOnThread()) {
+                executeTaskQueue();
+            } else {
+                Thread.sleep(0, 100_000);
+            }
+        }
+    }
+
+    private static int peekVarInt(byte[] bytes) {
+        int value = 0;
+        int size = 0;
+        int i = 0;
+        byte b;
+        do {
+            if (i >= bytes.length) {
+                return -1;
+            }
+            b = bytes[i++];
+            value |= (b & 0x7F) << (size * 7);
+            size++;
+            if (size > 5) {
+                return -1;
+            }
+        } while ((b & 0x80) != 0);
+        return value;
+    }
+
+    private static boolean isSkippableReplayDecode(Throwable t) {
+        String message = t.getMessage();
+        if (message != null && (
+                message.contains("minecraft:transfer")
+                        || message.contains("minecraft:cookie_request")
+                        || message.contains("minecraft:store_cookie"))) {
+            return true;
+        }
+        Throwable cause = t.getCause();
+        return cause != null && cause != t && isSkippableReplayDecode(cause);
+    }
+
     private Packet deserializePacket(byte[] bytes, ChannelHandlerContext ctx) throws IOException, IllegalAccessException, InstantiationException {
         ByteBuf bb = Unpooled.wrappedBuffer(bytes);
-        PacketByteBuf pb = new PacketByteBuf(bb);
-
         NetworkState<?> state = asMc(registry.getState());
-        Packet p = state.codec().decode(pb);
-        //#elseif MC>=11700
-        //$$ Packet p = state.getPacketHandler(NetworkSide.CLIENTBOUND, i, pb);
-        //#else
-        //#if MC>=10800
-        //$$ Packet p = state.getPacketHandler(NetworkSide.CLIENTBOUND, i);
-        //#else
-        //$$ Packet p = Packet.generatePacket(state.func_150755_b(), i);
-        //#endif
-        //$$ p.read(pb);
-        //#endif
-
-        return p;
+        ClientConnection connection = ctx != null ? ctx.pipeline().get(ClientConnection.class) : null;
+        if (registry.getState() == State.PLAY && connection != null) {
+            NetworkState<?> inbound = connection.getInboundProtocol();
+            if (inbound != null && inbound.id() == NetworkPhase.PLAY) {
+                state = inbound;
+            }
+        }
+        return state.codec().decode(bb);
     }
 
     // If we do not give minecraft time to tick, there will be dead entity artifacts left in the world
@@ -562,18 +615,16 @@ public class FullReplaySender extends ChannelDuplexHandler implements ReplaySend
      */
     protected Packet processPacket(Packet p) throws Exception {
         if (p instanceof LoginSuccessS2CPacket) {
-            registry = registry.withLoginSuccess();
+            registry = getPacketTypeRegistry(State.CONFIGURATION);
             return p;
         }
         //#if MC>=12002
         if (p instanceof ReadyS2CPacket) {
-            registry = registry.withState(State.PLAY);
+            registry = getPacketTypeRegistry(State.PLAY);
             return p;
         }
         if (p instanceof EnterReconfigurationS2CPacket) {
-            registry = registry.withState(State.CONFIGURATION);
-            hasWorldLoaded = false;
-            return p;
+            return null;
         }
         //#endif
 
@@ -608,16 +659,18 @@ public class FullReplaySender extends ChannelDuplexHandler implements ReplaySend
             }
         }
         if (p instanceof DisconnectS2CPacket) {
-            Text reason = ((DisconnectS2CPacket) p).reason();
-            String message = reason.getString();
-            if ("Please update to view this replay.".equals(message)) {
-                // This version of the mod supports replay restrictions so we are allowed
-                // to remove this packet.
-                return null;
-            }
+            return null;
         }
 
         if(BAD_PACKETS.contains(p.getClass())) return null;
+
+        if (mc.world == null
+                && registry.getState() == State.PLAY
+                && !(p instanceof GameJoinS2CPacket)
+                && !(p instanceof PlayerRespawnS2CPacket)
+                && !(p instanceof PlayerPositionLookS2CPacket)) {
+            return null;
+        }
 
         if (p instanceof CustomPayloadS2CPacket) {
             CustomPayloadS2CPacket packet = (CustomPayloadS2CPacket) p;
@@ -631,6 +684,7 @@ public class FullReplaySender extends ChannelDuplexHandler implements ReplaySend
             if (channelNameStr.startsWith("fabric-screen-handler-api-v")) {
                 return null; // we do not want to show modded screens which got opened for the recording player
             }
+            return null;
 
             // On 1.14+ there's a dedicated OpenWrittenBookS2CPacket now
             //#if MC<11400
@@ -851,8 +905,8 @@ public class FullReplaySender extends ChannelDuplexHandler implements ReplaySend
             if(!hasWorldLoaded) hasWorldLoaded = true;
 
             ReplayMod.instance.runLater(() -> {
-                if (mc.currentScreen instanceof DownloadingTerrainScreen) {
-                    // Close the world loading screen manually in case we swallow the packet
+                if (mc.currentScreen instanceof DownloadingTerrainScreen
+                        || mc.currentScreen instanceof net.minecraft.client.gui.screen.ReconfiguringScreen) {
                     mc.setScreen(null);
                 }
             });
@@ -1141,14 +1195,10 @@ public class FullReplaySender extends ChannelDuplexHandler implements ReplaySend
                                     setReplaySpeed(0);
                                 }
                             } catch (EOFException eof) {
-                                // Reached end of file
-                                // Pause the replay which will cause it to freeze before getting restarted
                                 setReplaySpeed(0);
-                                // Then wait until the user tells us to continue
-                                while (paused() && hasWorldLoaded && desiredTimeStamp == -1 && !terminate) {
+                                while (!terminate && !startFromBeginning && desiredTimeStamp == -1) {
                                     Thread.sleep(10);
                                 }
-
                                 if (terminate) {
                                     break REPLAY_LOOP;
                                 }
@@ -1162,6 +1212,7 @@ public class FullReplaySender extends ChannelDuplexHandler implements ReplaySend
                         hasWorldLoaded = false;
                         lastTimeStamp = 0;
                         registry = getPacketTypeRegistry(State.LOGIN);
+                        packetAssembler.reset();
                         startFromBeginning = false;
                         nextPacket = null;
                         realTimeStart = System.currentTimeMillis();
@@ -1302,6 +1353,7 @@ public class FullReplaySender extends ChannelDuplexHandler implements ReplaySend
                         replayIn = null;
                     }
                     registry = getPacketTypeRegistry(State.LOGIN);
+                    packetAssembler.reset();
                     startFromBeginning = false;
                     nextPacket = null;
                     ReplayMod.instance.runSync(replayHandler::restartedReplay);
@@ -1544,6 +1596,234 @@ public class FullReplaySender extends ChannelDuplexHandler implements ReplaySend
         } while (prevPos.squaredDistanceTo(entity.getPos()) > 0.0001 && ticks++ < 100);
     }
 
+    private final class RawNetworkAssembler {
+        private static final int MAX_FRAME = 16 * 1024 * 1024;
+        private final ByteBuf leftover = Unpooled.buffer();
+        private boolean streamMode;
+        private boolean logged;
+
+        List<byte[]> feed(byte[] chunk) {
+            if (!streamMode) {
+                if (looksLikeFramedStream(chunk)) {
+                    streamMode = true;
+                } else {
+                    return Collections.singletonList(chunk);
+                }
+            }
+            if (!logged) {
+                logged = true;
+                ReplayModReplay.LOGGER.info("Replay packets look length-prefixed; reassembling TCP frames.");
+            }
+            leftover.writeBytes(chunk);
+            return drainFrames();
+        }
+
+        void reset() {
+            leftover.clear();
+            streamMode = false;
+            logged = false;
+        }
+
+        private boolean looksLikeFramedStream(byte[] chunk) {
+            if (chunk.length < 2) {
+                return false;
+            }
+            try {
+                PacketByteBuf buf = new PacketByteBuf(Unpooled.wrappedBuffer(chunk));
+                int first = buf.readVarInt();
+                int header = buf.readerIndex();
+                // 完整 MC 包：varint 是包 ID，后面还有 payload。
+                // TCP 帧：varint 是帧长度，且等于剩余字节数，或明显大于正常包 ID。
+                if (first > 256) {
+                    return true;
+                }
+                return first >= 0 && header + first == chunk.length;
+            } catch (Exception e) {
+                return true;
+            }
+        }
+
+        private List<byte[]> drainFrames() {
+            List<byte[]> frames = new ArrayList<>();
+            int iterations = 0;
+            while (leftover.readableBytes() > 0 && iterations++ < 400) {
+                leftover.markReaderIndex();
+                int frameLen;
+                try {
+                    frameLen = readVarInt(leftover);
+                } catch (IndexOutOfBoundsException | DecoderException e) {
+                    leftover.resetReaderIndex();
+                    break;
+                }
+                if (frameLen < 0 || frameLen > MAX_FRAME || leftover.readableBytes() < frameLen) {
+                    leftover.resetReaderIndex();
+                    break;
+                }
+                byte[] frame = new byte[frameLen];
+                leftover.readBytes(frame);
+                byte[] packet = maybeDecompress(frame);
+                if (!isLikelyPacket(packet)) {
+                    leftover.resetReaderIndex();
+                    byte[] synced = resyncToZlib();
+                    if (synced != null) {
+                        leftover.discardSomeReadBytes();
+                        frames.add(synced);
+                        continue;
+                    }
+                    if (leftover.readableBytes() > 64) {
+                        leftover.skipBytes(Math.min(4096, leftover.readableBytes() - 2));
+                    }
+                    leftover.discardSomeReadBytes();
+                    break;
+                }
+                leftover.discardSomeReadBytes();
+                frames.add(packet);
+            }
+            return frames;
+        }
+
+        private boolean isLikelyPacket(byte[] packet) {
+            int id = peekVarInt(packet);
+            return id >= 0 && id < 256;
+        }
+
+        private byte[] resyncToZlib() {
+            int start = leftover.readerIndex();
+            int end = Math.min(leftover.writerIndex(), start + 512 * 1024);
+            for (int i = start; i < end - 2; i++) {
+                if (leftover.getUnsignedByte(i) != 0x78) {
+                    continue;
+                }
+                int flg = leftover.getUnsignedByte(i + 1);
+                if (flg != 0x9C && flg != 0x01 && flg != 0xDA && flg != 0x5E) {
+                    continue;
+                }
+                int window = Math.min(end - i, 512 * 1024);
+                byte[] src = new byte[window];
+                leftover.getBytes(i, src);
+                InflateResult inflated = inflateZlibLenient(src, 0);
+                if (inflated != null && isLikelyPacket(inflated.bytes)) {
+                    leftover.readerIndex(i + inflated.consumed);
+                    return inflated.bytes;
+                }
+            }
+            return null;
+        }
+
+        private int readVarInt(ByteBuf buf) {
+            int value = 0;
+            int size = 0;
+            byte b;
+            do {
+                if (!buf.isReadable()) {
+                    throw new IndexOutOfBoundsException();
+                }
+                b = buf.readByte();
+                value |= (b & 0x7F) << (size * 7);
+                size++;
+                if (size > 5) {
+                    throw new DecoderException("VarInt too big");
+                }
+            } while ((b & 0x80) != 0);
+            return value;
+        }
+
+        private byte[] maybeDecompress(byte[] frame) {
+            ByteBuf raw = Unpooled.wrappedBuffer(frame);
+            int uncompressedSize;
+            try {
+                uncompressedSize = readVarInt(raw);
+            } catch (Exception e) {
+                return frame;
+            }
+            if (uncompressedSize == 0) {
+                byte[] packet = new byte[raw.readableBytes()];
+                raw.readBytes(packet);
+                return packet;
+            }
+            if (uncompressedSize < 0 || uncompressedSize > MAX_FRAME || raw.readableBytes() <= 0) {
+                return frame;
+            }
+            byte[] compressed = new byte[raw.readableBytes()];
+            raw.readBytes(compressed);
+            InflateResult strict = inflateZlibStrict(compressed, uncompressedSize);
+            if (strict != null) {
+                return strict.bytes;
+            }
+            InflateResult lenient = inflateZlibLenient(compressed, uncompressedSize);
+            if (lenient != null) {
+                return lenient.bytes;
+            }
+            return frame;
+        }
+
+        private InflateResult inflateZlibStrict(byte[] compressed, int uncompressedSize) {
+            Inflater inflater = new Inflater();
+            try {
+                inflater.setInput(compressed);
+                byte[] out = new byte[uncompressedSize];
+                int n = 0;
+                while (n < uncompressedSize && !inflater.finished()) {
+                    int read = inflater.inflate(out, n, uncompressedSize - n);
+                    if (read == 0) {
+                        break;
+                    }
+                    n += read;
+                }
+                if (n != uncompressedSize) {
+                    return null;
+                }
+                return new InflateResult(out, compressed.length - inflater.getRemaining());
+            } catch (DataFormatException e) {
+                return null;
+            } finally {
+                inflater.end();
+            }
+        }
+
+        private InflateResult inflateZlibLenient(byte[] compressed, int expected) {
+            if (compressed.length < 3 || (compressed[0] & 0xFF) != 0x78) {
+                return null;
+            }
+            Inflater inflater = new Inflater(true);
+            try {
+                inflater.setInput(compressed, 2, compressed.length - 2);
+                ByteArrayOutputStream out = new ByteArrayOutputStream(expected > 0 ? expected : 65536);
+                byte[] buf = new byte[8192];
+                while (!inflater.finished()) {
+                    int n = inflater.inflate(buf);
+                    if (n == 0) {
+                        break;
+                    }
+                    out.write(buf, 0, n);
+                    if (expected > 0 && out.size() > expected + 1024) {
+                        break;
+                    }
+                }
+                byte[] bytes = out.toByteArray();
+                if (bytes.length == 0 || !isLikelyPacket(bytes)) {
+                    return null;
+                }
+                int consumed = Math.max(3, 2 + (compressed.length - 2 - inflater.getRemaining()));
+                return new InflateResult(bytes, consumed);
+            } catch (DataFormatException e) {
+                return null;
+            } finally {
+                inflater.end();
+            }
+        }
+    }
+
+    private static final class InflateResult {
+        final byte[] bytes;
+        final int consumed;
+
+        InflateResult(byte[] bytes, int consumed) {
+            this.bytes = bytes;
+            this.consumed = consumed;
+        }
+    }
+
     private static final class PacketData {
         private static final com.github.steveice10.netty.buffer.ByteBuf byteBuf = com.github.steveice10.netty.buffer.Unpooled.buffer();
         private static final NetOutput netOutput = new ByteBufNetOutput(byteBuf);
@@ -1552,8 +1832,8 @@ public class FullReplaySender extends ChannelDuplexHandler implements ReplaySend
         private final byte[] bytes;
 
         PacketData(ReplayInputStream in) throws IOException {
-            if (ReplayMod.isMinimalMode()) {
-                // Minimal mode, we can only read our exact protocol version and cannot use ReplayStudio
+            if (ReplayMod.bypassReplayStudioIo()) {
+                // ReplayStudio 不认识当前协议时，按原样读包，避免 ViaVersion 改坏 1.21 数据
                 timestamp = readInt(in);
                 int length = readInt(in);
                 if (timestamp == -1 || length == -1) {

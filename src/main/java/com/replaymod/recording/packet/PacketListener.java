@@ -22,6 +22,7 @@ import com.replaymod.replaystudio.replay.ReplayMetaData;
 import de.johni0702.minecraft.gui.container.VanillaGuiScreen;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -64,6 +65,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -88,22 +90,74 @@ public class PacketListener extends ChannelInboundHandlerAdapter {
 
     public static final String DECOMPRESS_KEY = "decompress";
     public static final String DECODER_KEY = "decoder";
+    public static final String INBOUND_CONFIG_KEY = "inbound_config";
+
+    public static String inboundDecodeKey(Channel channel) {
+        if (channel.pipeline().get(INBOUND_CONFIG_KEY) != null) {
+            return INBOUND_CONFIG_KEY;
+        }
+        if (channel.pipeline().get(DECODER_KEY) != null) {
+            return DECODER_KEY;
+        }
+        return null;
+    }
+
+    /**
+     * 插在拆包/解压之后、解码器之前。1.20.5+ 协议切换会把 decoder 换成 inbound_config，
+     * 插错位置会把 TCP 碎片写进 .mcpr。
+     */
+    public static void inject(Channel channel, PacketListener listener) {
+        if (channel.pipeline().get(RAW_RECORDER_KEY) != null) {
+            channel.pipeline().remove(RAW_RECORDER_KEY);
+        }
+        ChannelHandler decoded = channel.pipeline().get(DECODED_RECORDER_KEY);
+        if (decoded != null) {
+            channel.pipeline().remove(DECODED_RECORDER_KEY);
+        }
+        String target = inboundDecodeKey(channel);
+        if (target != null) {
+            if (channel.pipeline().get(DECOMPRESS_KEY) != null) {
+                channel.pipeline().addAfter(DECOMPRESS_KEY, RAW_RECORDER_KEY, listener);
+            } else {
+                channel.pipeline().addBefore(target, RAW_RECORDER_KEY, listener);
+            }
+        } else {
+            channel.pipeline().addFirst(RAW_RECORDER_KEY, listener);
+        }
+    }
 
     private static final MinecraftClient mc = getMinecraft();
     private static final Logger logger = LogManager.getLogger();
 
     private static final ResourcePackSendS2CPacket RESOURCE_PACK_SEND_PACKET =
-            //#if MC>=12003
-            new ResourcePackSendS2CPacket(null, "", "", false, null)
-            //#elseif MC>=11700
-            //$$ new ResourcePackSendS2CPacket("", "", false, null)
-            //#else
-            //$$ new ResourcePackSendS2CPacket()
-            //#endif
-            ;
-    private static final int PACKET_ID_RESOURCE_PACK_SEND = getPacketId(MCVer.asMc(com.replaymod.replaystudio.lib.viaversion.api.protocol.packet.State.PLAY), RESOURCE_PACK_SEND_PACKET);
-    private static final int PACKET_ID_CONFIG_RESOURCE_PACK_SEND = getPacketId(MCVer.asMc(com.replaymod.replaystudio.lib.viaversion.api.protocol.packet.State.CONFIGURATION), RESOURCE_PACK_SEND_PACKET);
-    private static final int PACKET_ID_LOGIN_COMPRESSION = getPacketId(MCVer.asMc(com.replaymod.replaystudio.lib.viaversion.api.protocol.packet.State.LOGIN), new LoginCompressionS2CPacket(0));
+            new ResourcePackSendS2CPacket(new UUID(0, 0), "", "", false, Optional.empty());
+    private static final int PACKET_ID_RESOURCE_PACK_SEND;
+    private static final int PACKET_ID_CONFIG_RESOURCE_PACK_SEND;
+    private static final int PACKET_ID_LOGIN_COMPRESSION;
+
+    static {
+        int playId = -1;
+        int configId = -1;
+        int loginId = -1;
+        try {
+            playId = getPacketId(MCVer.asMc(State.PLAY), RESOURCE_PACK_SEND_PACKET);
+        } catch (Throwable t) {
+            logger.error("Failed to resolve PLAY ResourcePackSend packet id", t);
+        }
+        try {
+            configId = getPacketId(MCVer.asMc(State.CONFIGURATION), RESOURCE_PACK_SEND_PACKET);
+        } catch (Throwable t) {
+            logger.error("Failed to resolve CONFIG ResourcePackSend packet id", t);
+        }
+        try {
+            loginId = getPacketId(MCVer.asMc(State.LOGIN), new LoginCompressionS2CPacket(0));
+        } catch (Throwable t) {
+            logger.error("Failed to resolve LOGIN compression packet id", t);
+        }
+        PACKET_ID_RESOURCE_PACK_SEND = playId;
+        PACKET_ID_CONFIG_RESOURCE_PACK_SEND = configId;
+        PACKET_ID_LOGIN_COMPRESSION = loginId;
+    }
     //#else
     //$$ private static final int PACKET_ID_LOGIN_COMPRESSION = getPacketId(NetworkState.LOGIN, new LoginCompressionS2CPacket());
     //#endif
@@ -155,11 +209,11 @@ public class PacketListener extends ChannelInboundHandlerAdapter {
             }
             try {
                 synchronized (replayFile) {
-                    if (ReplayMod.isMinimalMode()) {
+                    if (ReplayMod.bypassReplayStudioIo()) {
                         metaData.setFileFormat("MCPR");
                         metaData.setFileFormatVersion(ReplayMetaData.CURRENT_FILE_FORMAT_VERSION);
                         metaData.setProtocolVersion(MCVer.getProtocolVersion());
-                        metaData.setGenerator("ReplayMod in Minimal Mode");
+                        metaData.setGenerator("ReplayMod v" + ReplayMod.instance.getVersion());
 
                         try (OutputStream out = replayFile.write("metaData.json")) {
                             String json = (new Gson()).toJson(metaData);
@@ -217,8 +271,8 @@ public class PacketListener extends ChannelInboundHandlerAdapter {
             PacketData packetData = new PacketData(timestamp, packet);
             saveService.submit(() -> {
                 try {
-                    if (ReplayMod.isMinimalMode()) {
-                        // Minimal mode, ReplayStudio might not know our packet ids, so we cannot use it
+                    if (ReplayMod.bypassReplayStudioIo()) {
+                        // ReplayStudio 不认识当前协议时，按原样写包，避免 ViaVersion 改坏 1.21 数据
                         com.github.steveice10.netty.buffer.ByteBuf packetIdBuf = PooledByteBufAllocator.DEFAULT.buffer();
                         com.github.steveice10.netty.buffer.ByteBuf packetBuf = packetData.getPacket().getBuf();
                         try {
@@ -251,12 +305,10 @@ public class PacketListener extends ChannelInboundHandlerAdapter {
         super.handlerAdded(ctx);
 
         if (ctx.pipeline().get(DECODED_RECORDER_KEY) == null) {
-            if (ctx.pipeline().get(PacketListener.DECODER_KEY) != null) {
-                // Regular channel, we'll inject our decoded recorder directly after the decoder
-                ctx.pipeline().addAfter(DECODER_KEY, DECODED_RECORDER_KEY, new DecodedPacketListener());
+            String target = inboundDecodeKey(ctx.channel());
+            if (target != null) {
+                ctx.pipeline().addAfter(target, DECODED_RECORDER_KEY, new DecodedPacketListener());
             } else {
-                // Integrated server passes packets directly, there's no splitting, decompression or decoding
-                // The decoded packet handler can just go directly behind this hand
                 ctx.pipeline().addAfter(RAW_RECORDER_KEY, DECODED_RECORDER_KEY, new DecodedPacketListener());
             }
         }
@@ -320,7 +372,7 @@ public class PacketListener extends ChannelInboundHandlerAdapter {
                     replayFile.save();
                     replayFile.close();
 
-                    if (core.getSettingsRegistry().get(Setting.AUTO_POST_PROCESS) && !ReplayMod.isMinimalMode()) {
+                    if (core.getSettingsRegistry().get(Setting.AUTO_POST_PROCESS) && !ReplayMod.bypassReplayStudioIo()) {
                         outputPaths = MarkerProcessor.apply(outputPath, guiSavingReplay.getProgressBar()::setProgress);
                     } else {
                         outputPaths = Collections.singletonList(Pair.of(outputPath, metaData));
@@ -348,6 +400,16 @@ public class PacketListener extends ChannelInboundHandlerAdapter {
         }
         this.context = ctx;
 
+        try {
+            recordInbound(ctx, msg);
+            return;
+        } catch (Exception e) {
+            logger.warn("Replay recorder failed, forwarding packet", e);
+        }
+        super.channelRead(ctx, msg);
+    }
+
+    private void recordInbound(ChannelHandlerContext ctx, Object msg) throws Exception {
         NetworkState<?> connectionState = getConnectionState();
 
         Packet packet = null;
@@ -363,10 +425,10 @@ public class PacketListener extends ChannelInboundHandlerAdapter {
             //#if MC>=11904
             //#if MC>=12002
             PacketBundleHandler bundleHandler = getConnectionState().bundleHandler();
-            //#else
-            //$$ PacketBundleHandler bundleHandler = ctx.channel().attr(PacketBundleHandler.KEY).get().getBundler(NetworkSide.CLIENTBOUND);
-            //#endif
             List<Packet> packets = new ArrayList<>(1);
+            if (bundleHandler == null) {
+                packets.add(encodeMcPacket(connectionState, (net.minecraft.network.packet.Packet<?>) msg));
+            } else {
             bundleHandler.forEachPacket((net.minecraft.network.packet.Packet<?>) msg, unbundledPacket -> {
                 try {
                     packets.add(encodeMcPacket(connectionState, unbundledPacket));
@@ -374,6 +436,7 @@ public class PacketListener extends ChannelInboundHandlerAdapter {
                     throw new RuntimeException(e);
                 }
             });
+            }
             if (packets.size() > 1) {
                 packets.forEach(this::save);
                 super.channelRead(ctx, msg);
@@ -386,14 +449,10 @@ public class PacketListener extends ChannelInboundHandlerAdapter {
         }
 
         if (packet != null) {
-            if (connectionState.id() == net.minecraft.network.NetworkPhase.PLAY && packet.getId() == PACKET_ID_RESOURCE_PACK_SEND
-                    || connectionState.id() == net.minecraft.network.NetworkPhase.CONFIGURATION && packet.getId() == PACKET_ID_CONFIG_RESOURCE_PACK_SEND
-            ) {
+            if (msg instanceof ResourcePackSendS2CPacket resourcePackPacket) {
                 ClientConnection connection = ctx.pipeline().get(ClientConnection.class);
-                save(resourcePackRecorder.handleResourcePack(connection, (ResourcePackSendS2CPacket) decodeMcPacket(packet)));
-                //#if MC>=12003
+                save(resourcePackRecorder.handleResourcePack(connection, resourcePackPacket));
                 super.channelRead(ctx, msg);
-                //#endif
                 return;
             }
 
@@ -431,12 +490,14 @@ public class PacketListener extends ChannelInboundHandlerAdapter {
         }
     }
 
-    private static net.minecraft.network.packet.Packet decodeMcPacket(Packet packet) throws IOException {
-        NetworkState<?> connectionState = asMc(packet.getRegistry().getState());
+    private static net.minecraft.network.packet.Packet decodeMcPacket(Packet packet, NetworkState<?> connectionState) throws IOException {
         ByteBuf combined = Unpooled.buffer();
         PacketByteBuf header = new PacketByteBuf(combined);
         header.writeVarInt(packet.getId());
-        combined.writeBytes(packet.getBuf().nioBuffer());
+        com.github.steveice10.netty.buffer.ByteBuf src = packet.getBuf();
+        byte[] body = new byte[src.readableBytes()];
+        src.getBytes(src.readerIndex(), body);
+        combined.writeBytes(body);
         return connectionState.codec().decode(combined);
     }
 

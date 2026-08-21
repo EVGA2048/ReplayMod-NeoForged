@@ -33,6 +33,7 @@
     //#endif
     "MixinNetHandlerLoginClient",
     "MixinNetHandlerPlayClient",
+    "MixinNetHandlerConfigClient",
     //#if MC<11400
     //$$ "MixinNetworkDispatcher",
     //#endif

@@ -49,14 +49,11 @@ public class InputReplayTimer extends WrappedTimer {
 
         ReplayMod.instance.runTasks();
 
-        //#if MC<=10710
-        //$$ // Code below only updates the current screen when a world and player is loaded. This may not be the case for
-        //$$ // the GuiOpeningReplay screen resulting in a livelock.
-        //$$ // To counteract that, we always update that screen (doesn't matter if we do it twice).
-        //$$ if (mc.currentScreen instanceof GuiOpeningReplay) {
-        //$$     mc.currentScreen.handleInput();
-        //$$ }
-        //#endif
+        if (mod.getReplayHandler() != null) {
+            if (mc.currentScreen instanceof DownloadingTerrainScreen) {
+                mc.currentScreen.close();
+            }
+        }
 
         // If we are in a replay, we have to manually process key and mouse events as the
         // tick speed may vary or there may not be any ticks at all (when the replay is paused)
@@ -67,47 +64,7 @@ public class InputReplayTimer extends WrappedTimer {
                 MCVer.processKeyBinds();
             }
             mc.keyboard.pollDebugCrash();
-            //#else
-            //$$ if (mc.currentScreen != null) {
-                //#if MC>=10800
-                //$$ try {
-                //$$     mc.currentScreen.handleInput();
-                //$$ } catch (IOException e) { // *SIGH*
-                //$$     e.printStackTrace();
-                //$$ }
-                //#else
-                //$$ mc.currentScreen.handleInput();
-                //#endif
-            //$$ }
-            //$$ if (mc.currentScreen == null || mc.currentScreen.allowUserInput) {
-                //#if MC>=10904
-                //$$ ((MCVer.MinecraftMethodAccessor) mc).replayModRunTickMouse();
-                //$$ ((MCVer.MinecraftMethodAccessor) mc).replayModRunTickKeyboard();
-                //#else
-                //$$ // 1.8.9 and below has one giant tick function, so we try to only do keyboard & mouse as far as possible
-                //$$ ((MCVer.MinecraftMethodAccessor) mc).replayModSetEarlyReturnFromRunTick(true);
-                //#if MC>=10800
-                //$$ try {
-                //$$     mc.runTick();
-                //$$ } catch (IOException e) { // *SIGH*
-                //$$     e.printStackTrace();
-                //$$ }
-                //#else
-                //$$ mc.runTick();
-                //#endif
-                //$$ ((MCVer.MinecraftMethodAccessor) mc).replayModSetEarlyReturnFromRunTick(false);
-                //#endif
-            //$$ }
             //#endif
-
-            //#if MC>=11802
-            // As of 1.18.2, this screen always stays open for at least two seconds, and requires ticking to close.
-            // Thanks, but we'll have none of that (at least while in a replay).
-            if (mc.currentScreen instanceof DownloadingTerrainScreen) {
-                mc.currentScreen.close();
-            }
-            //#endif
-
         }
         //#if MC>=11600
         return ticksThisFrame;

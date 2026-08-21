@@ -123,20 +123,18 @@ public class MinecraftGuiRenderer implements GuiRenderer {
         MCVer.setScissorBounds(x * f, y * f, width * f, height * f);
     }
 
+    private Identifier boundTexture;
+
     @Override
     public void bindTexture(Identifier location) {
+        this.boundTexture = location;
         MCVer.bindTexture(location);
     }
 
     @Override
     public void bindTexture(int glId) {
-        //#if MC>=11700
+        this.boundTexture = null;
         RenderSystem.setShaderTexture(0, glId);
-        //#elseif MC>=10800
-        //$$ GlStateManager.bindTexture(glId);
-        //#else
-        //$$ GL11.glBindTexture(GL_TEXTURE_2D, glId);
-        //#endif
     }
 
     @Override
@@ -147,21 +145,18 @@ public class MinecraftGuiRenderer implements GuiRenderer {
     @Override
     public void drawTexturedRect(int x, int y, int u, int v, int width, int height, int uWidth, int vHeight, int textureWidth, int textureHeight) {
         color(1, 1, 1);
-        //#if MC>=12000
-        drawTexturedRect(x, x + width, y, y + height, u / (float) textureWidth, (u + uWidth) / (float) textureWidth, v / (float) textureHeight, (v + vHeight) / (float) textureHeight);
-        //#elseif MC>=11600
-        //$$ DrawableHelper.drawTexture(matrixStack, x, y, width, height, u, v, uWidth, vHeight, textureWidth, textureHeight);
-        //#else
-        //#if MC>=11400
-        //$$ DrawableHelper.blit(x, y, width, height, u, v, uWidth, vHeight, textureWidth, textureHeight);
-        //#else
-        //$$ Gui.drawScaledCustomSizeModalRect(x, y, u, v, uWidth, vHeight, width, height, textureWidth, textureHeight);
-        //#endif
-        //#endif
+        if (boundTexture != null && uWidth == width && vHeight == height) {
+            context.drawTexture(boundTexture, x, y, (float) u, (float) v, width, height, textureWidth, textureHeight);
+            return;
+        }
+        context.draw();
+        if (boundTexture != null) {
+            MCVer.bindTexture(boundTexture);
+        }
+        drawTexturedRectImmediate(x, x + width, y, y + height, u / (float) textureWidth, (u + uWidth) / (float) textureWidth, v / (float) textureHeight, (v + vHeight) / (float) textureHeight);
     }
 
-    //#if MC>=12000
-    private void drawTexturedRect(int x1, int x2, int y1, int y2, float u1, float u2, float v1, float v2) {
+    private void drawTexturedRectImmediate(int x1, int x2, int y1, int y2, float u1, float u2, float v1, float v2) {
         RenderSystem.setShader(GameRenderer::getPositionTexProgram);
         Matrix4f matrix = matrixStack.peek().getPositionMatrix();
         BufferBuilder bufferBuilder = Tessellator.getInstance().begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_TEXTURE);
@@ -171,7 +166,6 @@ public class MinecraftGuiRenderer implements GuiRenderer {
         bufferBuilder.vertex(matrix, x2, y1, 0).texture(u2, v1);
         BufferRenderer.drawWithGlobalProgram(bufferBuilder.end());
     }
-    //#endif
 
     @Override
     public void drawRect(int x, int y, int width, int height, int color) {
@@ -205,12 +199,8 @@ public class MinecraftGuiRenderer implements GuiRenderer {
         //#endif
         enableBlend();
         blendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, 1, 0);
-        //#if MC>=11700
+        context.draw();
         setShader(GameRenderer::getPositionColorProgram);
-        //#else
-        //$$ disableAlphaTest();
-        //$$ shadeModel(GL_SMOOTH);
-        //#endif
         MCVer.drawRect(x, y, width, height, tl, tr, bl, br);
         //#if MC>=11700
         //#else

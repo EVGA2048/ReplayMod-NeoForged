@@ -18,6 +18,7 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerAdapter;
 import io.netty.channel.ChannelHandlerContext;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.network.ClientConnection;
 import net.minecraft.network.NetworkState;
 import net.minecraft.network.NetworkSide;
 import net.minecraft.network.packet.Packet;
@@ -76,18 +77,16 @@ public class QuickReplaySender extends ChannelHandlerAdapter implements ReplaySe
                     buf = new byte[size];
                 }
                 byteBuf.getBytes(byteBuf.readerIndex(), buf, 0, size);
-                ByteBuf wrappedBuf = Unpooled.wrappedBuffer(buf);
-                wrappedBuf.writerIndex(size);
-                PacketByteBuf packetByteBuf = new PacketByteBuf(wrappedBuf);
+                PacketByteBuf packetByteBuf = new PacketByteBuf(Unpooled.buffer(5 + size));
+                packetByteBuf.writeVarInt(packet.getId());
+                packetByteBuf.writeBytes(buf, 0, size);
 
                 NetworkState<?> state = asMc(packet.getRegistry().getState());
-                //#if MC>=10809
-                Packet<?> mcPacket;
-                //#else
-                //$$ Packet mcPacket;
-                //#endif
-                //#if MC>=12002
-                mcPacket = state.codec().decode(packetByteBuf);
+                ClientConnection connection = ctx != null ? ctx.pipeline().get(ClientConnection.class) : null;
+                if (connection != null && connection.getInboundProtocol() != null) {
+                    state = connection.getInboundProtocol();
+                }
+                Packet<?> mcPacket = state.codec().decode(packetByteBuf);
                 //#elseif MC>=11700
                 //$$ mcPacket = state.getPacketHandler(NetworkSide.CLIENTBOUND, packet.getId(), packetByteBuf);
                 //#elseif MC>=11500
